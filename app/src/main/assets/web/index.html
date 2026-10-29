@@ -1,0 +1,126 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#f7f8f4">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self' data: blob:; script-src 'self' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self' blob:; worker-src 'self' blob:; object-src 'none'; base-uri 'none'; form-action 'none'">
+  <title>مداد — مساحتك للمعرفة</title>
+  <link rel="stylesheet" href="styles.css">
+  <script defer src="vendor/pdf.worker.min.js"></script>
+  <script defer src="vendor/pdf.min.js"></script>
+  <script defer src="engine.js"></script>
+  <script defer src="local-answer.js"></script>
+  <script defer src="ocr.js"></script>
+  <script defer src="app.js"></script>
+</head>
+<body>
+<svg xmlns="http://www.w3.org/2000/svg" class="sprite" aria-hidden="true">
+  <symbol id="i-book" viewBox="0 0 24 24"><path d="M3.5 5.7c3.1-1 5.9-.7 8.5 1.1 2.6-1.8 5.4-2.1 8.5-1.1v12c-3.1-1-5.9-.7-8.5 1.1-2.6-1.8-5.4-2.1-8.5-1.1z"/><path d="M12 6.8v12"/></symbol>
+  <symbol id="i-spark" viewBox="0 0 24 24"><path d="m12 2 1.7 5.7L19.5 9.5l-5.8 1.8L12 17l-1.7-5.7L4.5 9.5l5.8-1.8zM19 15.5l.8 2.4 2.2.7-2.2.7L19 21.7l-.7-2.4-2.3-.7 2.3-.7z"/></symbol>
+  <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+  <symbol id="i-menu" viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h16"/></symbol>
+  <symbol id="i-close" viewBox="0 0 24 24"><path d="M5 5l14 14M19 5 5 19"/></symbol>
+  <symbol id="i-chevron" viewBox="0 0 24 24"><path d="m14 6-6 6 6 6"/></symbol>
+  <symbol id="i-arrow" viewBox="0 0 24 24"><path d="M12 19V5M6.5 10.5 12 5l5.5 5.5"/></symbol>
+  <symbol id="i-file" viewBox="0 0 24 24"><path d="M6.5 3.5h7L18.5 8v12.5h-12z"/><path d="M13.5 3.5V8h5M9.5 12h6M9.5 15.5h6"/></symbol>
+  <symbol id="i-upload" viewBox="0 0 24 24"><path d="M12 16V4m-4.5 4.5L12 4l4.5 4.5M4 15.5v3a1.5 1.5 0 0 0 1.5 1.5h13a1.5 1.5 0 0 0 1.5-1.5v-3"/></symbol>
+  <symbol id="i-chat" viewBox="0 0 24 24"><path d="M5 4.5h14a1.5 1.5 0 0 1 1.5 1.5v9a1.5 1.5 0 0 1-1.5 1.5h-7l-4.5 3v-3H5A1.5 1.5 0 0 1 3.5 15V6A1.5 1.5 0 0 1 5 4.5z"/></symbol>
+  <symbol id="i-sliders" viewBox="0 0 24 24"><path d="M4 7h9m4 0h3M4 17h3m4 0h9"/><circle cx="15" cy="7" r="2"/><circle cx="9" cy="17" r="2"/></symbol>
+  <symbol id="i-shield" viewBox="0 0 24 24"><path d="M12 3 4.5 6v5c0 4.8 3.2 7.8 7.5 10 4.3-2.2 7.5-5.2 7.5-10V6z"/><path d="m9 11.8 2 2 4-4"/></symbol>
+  <symbol id="i-trash" viewBox="0 0 24 24"><path d="M4.5 7h15M9 7V4.5h6V7m-8.5 0 .7 12h9.6l.7-12M10 10v6m4-6v6"/></symbol>
+  <symbol id="i-more" viewBox="0 0 24 24"><circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/></symbol>
+  <symbol id="i-check" viewBox="0 0 24 24"><path d="m4.5 12 5 5 10-10"/></symbol>
+  <symbol id="i-paperclip" viewBox="0 0 24 24"><path d="m8.5 12.5 5.9-5.9a3.3 3.3 0 0 1 4.7 4.7l-7.5 7.5a5 5 0 1 1-7.1-7.1l7.2-7.2"/></symbol>
+  <symbol id="i-copy" viewBox="0 0 24 24"><rect x="8" y="8" width="11" height="12" rx="2"/><path d="M15 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2"/></symbol>
+  <symbol id="i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M12 7v5l3.2 2"/></symbol>
+  <symbol id="i-edit" viewBox="0 0 24 24"><path d="m4 20 3.8-.8L19 8a2.1 2.1 0 0 0-3-3L4.8 16.2zM13.8 7.2l3 3"/></symbol>
+</svg>
+<div id="drawer-backdrop" class="drawer-backdrop" hidden></div>
+<div class="app-shell">
+  <aside class="rail" id="rail" aria-label="الدفاتر">
+    <div class="brand">
+      <div class="brand-icon"><svg><use href="#i-book"></use></svg><span>✦</span></div>
+      <div><div class="brand-name">مِداد<span class="brand-dot">.</span></div><div class="brand-caption">مساحتك للمعرفة</div></div>
+      <button class="icon-button mobile-close" id="close-rail" aria-label="إغلاق القائمة"><svg><use href="#i-close"></use></svg></button>
+    </div>
+    <button class="new-notebook" id="new-session"><span class="new-icon"><svg><use href="#i-plus"></use></svg></span><span>دفتر جديد</span></button>
+    <div class="rail-label"><span>دفاتري</span><span id="session-count">٠</span></div>
+    <nav class="session-list" id="session-list" aria-label="قائمة الدفاتر"></nav>
+    <div class="rail-bottom">
+      <button class="rail-link" id="settings-btn"><span class="rail-link-icon"><svg><use href="#i-sliders"></use></svg></span><span>الإعدادات والتحكم</span><svg class="rail-chevron"><use href="#i-chevron"></use></svg></button>
+      <div class="rail-privacy"><svg><use href="#i-shield"></use></svg><span><strong>مساحتك، وعلى جهازك</strong><small>كل شيء يبقى معك، دون اتصال.</small></span></div>
+    </div>
+  </aside>
+
+  <div class="main-area">
+    <header class="topbar">
+      <div class="topbar-leading">
+        <button class="icon-button menu-button" id="menu-btn" aria-label="فتح قائمة الدفاتر"><svg><use href="#i-menu"></use></svg></button>
+        <div class="mobile-brand"><span class="mobile-brand-icon"><svg><use href="#i-book"></use></svg></span><strong>مِداد<span>.</span></strong></div>
+        <div class="breadcrumb"><span>دفاتري</span><svg><use href="#i-chevron"></use></svg><strong id="breadcrumb-title">دفتر جديد</strong></div>
+      </div>
+      <div class="top-actions">
+        <span class="offline-pill"><i></i><span>يعمل دون إنترنت</span></span>
+        <button id="top-settings" class="icon-button top-settings" aria-label="الإعدادات"><svg><use href="#i-sliders"></use></svg></button>
+        <button id="session-more" class="icon-button" aria-label="خيارات الدفتر"><svg><use href="#i-more"></use></svg></button>
+      </div>
+    </header>
+
+    <div class="workspace">
+      <main class="conversation" aria-label="المحادثة">
+        <div class="mobile-source-bar">
+          <button id="mobile-sources" class="mobile-source-trigger"><span class="mobile-source-icon"><svg><use href="#i-book"></use></svg></span><span><strong>مصادر هذا الدفتر</strong><small id="mobile-source-count">لا توجد مصادر بعد</small></span><svg class="bar-chevron"><use href="#i-chevron"></use></svg></button>
+          <button id="mobile-add" class="mobile-add" aria-label="إضافة مصدر"><svg><use href="#i-plus"></use></svg></button>
+        </div>
+        <div class="conversation-scroll" id="conversation-scroll">
+          <section class="welcome" id="welcome">
+            <div class="welcome-art" aria-hidden="true">
+              <span class="art-circle art-circle-a"></span><span class="art-circle art-circle-b"></span>
+              <span class="art-star art-star-a">✦</span><span class="art-star art-star-b">✧</span>
+              <div class="art-book"><svg><use href="#i-book"></use></svg></div>
+            </div>
+            <div class="eyebrow"><span></span> مساحة للتعلّم بطريقتك</div>
+            <h1>كل مراجعك،<br><em>في مكان واحد.</em></h1>
+            <p class="welcome-description">أضف مرجعًا واسأل عنه. سننتقي جملًا من صفحاته، أو نجري حسابًا بسيطًا مع توضيح مصدر النتيجة.</p>
+            <button class="welcome-upload" id="welcome-upload"><svg><use href="#i-plus"></use></svg> أضف مصدرك الأول</button>
+            <div class="welcome-divider"><span></span><small>جرّب أن تسأل</small><span></span></div>
+            <div class="suggestions" id="suggestions">
+              <button data-question="لخّص لي أهم النقاط في المراجع"><span>لخّص لي المراجع</span><svg><use href="#i-arrow"></use></svg></button>
+              <button data-question="ما أهم الأفكار في هذه المراجع؟"><span>ما أهم الأفكار؟</span><svg><use href="#i-arrow"></use></svg></button>
+              <button data-question="احسب 12 × 5"><span>جرّب حسابًا بسيطًا</span><svg><use href="#i-arrow"></use></svg></button>
+            </div>
+          </section>
+          <div id="messages" class="messages" aria-live="polite"></div>
+          <div id="typing" class="typing" hidden><span class="assistant-avatar"><svg><use href="#i-spark"></use></svg></span><div><strong id="typing-text">أبحث في مراجعك</strong><span class="typing-dots"><i></i><i></i><i></i></span></div></div>
+        </div>
+        <div class="composer-area">
+          <div class="composer" id="composer">
+            <button class="attach-btn" id="attach-btn" aria-label="إضافة مصدر"><svg><use href="#i-paperclip"></use></svg></button>
+            <textarea id="question" rows="1" maxlength="3000" placeholder="اسأل عن مراجعك، أو اكتب سؤالك هنا..." aria-label="اكتب سؤالك"></textarea>
+            <button class="send-btn" id="send-btn" aria-label="إرسال السؤال"><svg><use href="#i-arrow"></use></svg></button>
+            <button class="stop-btn" id="stop-btn" aria-label="إيقاف قراءة الملف" hidden><span></span></button>
+          </div>
+          <div class="composer-foot"><span><svg><use href="#i-shield"></use></svg> بياناتك تبقى على جهازك</span><button id="mode-shortcut">المصادر + الحساب <span>⌄</span></button></div>
+          <p class="disclaimer">تحقّق من المقاطع، خصوصًا النص المقروء من الصور.</p>
+        </div>
+      </main>
+
+      <aside class="sources-panel" id="sources-panel" aria-label="مصادر الدفتر">
+        <div class="sources-header"><div><div class="section-kicker">مساحة العمل</div><h2>المصادر <span id="source-count">٠</span></h2></div><button id="close-sources" class="icon-button mobile-close" aria-label="إغلاق المصادر"><svg><use href="#i-close"></use></svg></button></div>
+        <p class="sources-intro">كل ما تضيفه هنا يبقى على جهازك.</p>
+        <button class="add-source" id="add-source"><span><svg><use href="#i-plus"></use></svg></span> إضافة مصدر</button>
+        <button class="paste-source" id="paste-source">أو الصق نصًا مباشرة</button>
+        <div class="source-types">PDF <span>•</span> TXT <span>•</span> نصوص</div>
+        <div id="source-list" class="source-list"></div>
+        <div class="source-empty" id="source-empty"><div class="source-empty-illustration"><svg><use href="#i-file"></use></svg><span>✦</span></div><strong>ابدأ بمصدر</strong><p>أضف ملف PDF أو نصًا ليكون أساس محادثتك.</p></div>
+        <div class="source-note"><svg><use href="#i-spark"></use></svg><p><strong>إجابات يمكنك تتبّعها</strong><br>ستظهر المقاطع المستعملة مع اسم الملف ورقم الصفحة.</p></div>
+      </aside>
+    </div>
+  </div>
+</div>
+<input id="file-input" type="file" accept=".pdf,.txt,.md,.markdown,application/pdf,text/plain,text/markdown" multiple hidden>
+<div id="modal-root" class="modal-root" hidden></div>
+<div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
+</body>
+</html>
