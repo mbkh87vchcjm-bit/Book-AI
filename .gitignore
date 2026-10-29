@@ -1,0 +1,8 @@
+# Local Android build products and signing material
+build/
+.gradle/
+local.properties
+*.jks
+*.keystore
+.DS_Store
+node_modules/

@@ -1,0 +1,13 @@
+{
+  "name": "midad-offline-android",
+  "version": "2.0.0",
+  "private": true,
+  "description": "Offline Arabic Android reference assistant",
+  "scripts": {
+    "test": "node --test tests/engine.test.cjs tests/local-answer.test.cjs tests/ocr.test.cjs",
+    "test:browser": "node tests/browser.test.cjs"
+  },
+  "devDependencies": {
+    "playwright-core": "1.64.1"
+  }
+}
