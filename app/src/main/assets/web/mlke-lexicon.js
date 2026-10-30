@@ -56,12 +56,23 @@
       .replace(/[ؤئ]/g, 'ء').trim();
   }
 
+  var sharedInstance = null;
+
   function Lexicon(userEntries) {
     this.entries = INITIAL_ENTRIES.slice();
     if (Array.isArray(userEntries)) {
       userEntries.forEach(this.addOrUpdate.bind(this));
     }
   }
+
+  Lexicon.getSharedInstance = function (userEntries) {
+    if (!sharedInstance) {
+      sharedInstance = new Lexicon(userEntries);
+    } else if (Array.isArray(userEntries)) {
+      userEntries.forEach(function (e) { sharedInstance.addOrUpdate(e); });
+    }
+    return sharedInstance;
+  };
 
   Lexicon.prototype.addOrUpdate = function (entry) {
     if (!entry || (!entry.term_ar && !entry.term_en)) return false;

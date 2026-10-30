@@ -403,7 +403,8 @@
     $('question').value = ''; $('question').style.height = '';
     try {
       var reply = A.answer({question: question, documents: session.documents, priorQuestion: prior && prior.text,
-        mode: state.settings.mode, allowMath: state.settings.allowMath, maxSentences: state.settings.maxSentences});
+        mode: state.settings.mode, allowMath: state.settings.allowMath, maxSentences: state.settings.maxSentences,
+        userLexicon: state.userLexicon});
       session.messages.push({id: uid(), role: 'assistant', text: reply.text, origin: reply.origin, references: reply.references});
     } catch (_) {
       session.messages.push({id: uid(), role: 'assistant', text: 'تعذّر تحليل هذا السؤال محليًا. جرّب صياغة أبسط.', origin: 'error', references: []});

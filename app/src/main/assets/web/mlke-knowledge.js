@@ -5,8 +5,6 @@
 }(typeof globalThis !== 'undefined' ? globalThis : this, function (LexiconClass, TranslatorModule) {
   'use strict';
 
-  var lexicon = new LexiconClass();
-
   function KnowledgeBase() {
     this.facts = [];
   }
@@ -14,13 +12,18 @@
   KnowledgeBase.prototype.addFact = function (fact) {
     if (!fact || !fact.subject || !fact.relation) return false;
     this.facts.push({
-      id: 'fact-' + Date.now() + '-' + Math.random().toString(36).slice(2, 6),
+      id: fact.id || ('fact-' + Date.now() + '-' + Math.random().toString(36).slice(2, 6)),
       subject: fact.subject,
       relation: fact.relation,
       object: fact.object || '',
+      docId: fact.docId || null,
       docName: fact.docName || '',
-      page: fact.page || 1,
+      page: fact.page !== undefined && fact.page !== null ? fact.page : null,
+      chunkId: fact.chunkId || null,
+      offset: fact.offset || 0,
       sourceText: fact.sourceText || '',
+      translatedText: fact.translatedText || '',
+      extractionRule: fact.extractionRule || 'pattern-default',
       confidence: fact.confidence || 0.90
     });
     return true;
@@ -33,20 +36,27 @@
     });
   };
 
-  function extractFactsFromSentence(text, docName, page) {
+  KnowledgeBase.prototype.removeDocFacts = function (docId) {
+    if (!docId) return;
+    this.facts = this.facts.filter(function (f) { return f.docId !== docId; });
+  };
+
+  function extractFactsFromSentence(text, docName, page, docId) {
     var str = String(text || '').trim();
     if (!str) return [];
 
     var facts = [];
-    var matchDef = str.match(/^([A-Za-z0-9\s]+)\s+(is|provides|translates|contains|manages|controls)\s+(.+)$/i);
+    var matchDef = str.match(/^([A-Za-z0-9\s]+)\s+(is|provides|translates|contains|manages|controls|executes|identifies)\s+(.+)$/i);
     if (matchDef) {
       facts.push({
         subject: matchDef[1].trim(),
         relation: matchDef[2].trim().toLowerCase(),
         object: matchDef[3].trim(),
-        docName: docName,
-        page: page,
+        docId: docId || null,
+        docName: docName || '',
+        page: page !== undefined && page !== null ? page : null,
         sourceText: str,
+        extractionRule: 'svo-pattern',
         confidence: 0.92
       });
     }
@@ -76,7 +86,7 @@
         text: tableLines.join('\n'),
         origin: 'source',
         references: f1.concat(f2).map(function (f) {
-          return { docName: f.docName, page: f.page, excerpt: f.sourceText, ocr: false };
+          return { docId: f.docId, docName: f.docName, page: f.page, excerpt: f.sourceText, ocr: false };
         })
       };
     }

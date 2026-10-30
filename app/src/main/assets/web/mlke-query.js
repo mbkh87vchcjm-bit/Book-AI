@@ -5,8 +5,6 @@
 }(typeof globalThis !== 'undefined' ? globalThis : this, function (LexiconClass) {
   'use strict';
 
-  var lexicon = new LexiconClass();
-
   function normalizeArabic(text) {
     var s = String(text || '');
     try { s = s.normalize('NFKC'); } catch (_) {}
@@ -67,42 +65,50 @@
     return 'general';
   }
 
-  function extractEntities(question) {
+  function extractEntities(question, lexiconInstance) {
+    var lexicon = lexiconInstance || (LexiconClass.getSharedInstance ? LexiconClass.getSharedInstance() : new LexiconClass());
     var norm = normalizeArabic(question);
     var words = norm.match(/[a-z0-9\u0621-\u063a\u0641-\u064a]+/g) || [];
     var entities = [];
 
-    // Check uppercase abbreviations first
+    // Longest phrase matching: 4-word, 3-word, 2-word, single-word
+    for (var len = 4; len >= 1; len--) {
+      for (var i = 0; i <= words.length - len; i++) {
+        var phrase = words.slice(i, i + len).join(' ');
+        var matched = lexicon.lookupTerm(phrase);
+        if (matched) {
+          var name = matched.abbreviation || matched.term_ar || matched.term_en;
+          if (name && entities.indexOf(name) < 0) entities.push(name);
+        }
+      }
+    }
+
+    // Check uppercase abbreviations in original query
     var abbreviations = question.match(/\b[A-Z]{2,6}\b/g) || [];
     abbreviations.forEach(function (abbr) {
       if (entities.indexOf(abbr) < 0) entities.push(abbr);
     });
 
-    // Match lexicon terms
-    words.forEach(function (word) {
-      if (word.length < 2) return;
-      var term = lexicon.lookupTerm(word);
-      if (term) {
-        var name = term.abbreviation || term.term_ar || term.term_en;
-        if (name && entities.indexOf(name) < 0) entities.push(name);
-      }
-    });
-
     return entities;
   }
 
-  function parseQuery(question) {
+  function parseQuery(question, lexiconInstance) {
+    var lexicon = lexiconInstance || (LexiconClass.getSharedInstance ? LexiconClass.getSharedInstance() : new LexiconClass());
     var lang = detectLanguage(question);
     var intent = classifyIntent(question);
-    var entities = extractEntities(question);
+    var entities = extractEntities(question, lexicon);
     var matchedTerm = lexicon.lookupTerm(question);
+
+    var confidence = 0.50;
+    if (intent !== 'general') confidence += 0.25;
+    if (entities.length > 0) confidence += 0.20;
 
     return {
       language: lang,
       intent: intent,
       entities: entities,
       domain: matchedTerm ? matchedTerm.domain : 'general',
-      confidence: intent !== 'general' ? 0.90 : 0.60
+      confidence: Math.min(0.95, confidence)
     };
   }
 

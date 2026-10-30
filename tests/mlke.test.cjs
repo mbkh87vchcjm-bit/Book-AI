@@ -6,61 +6,77 @@ const Lexicon = require('../app/src/main/assets/web/mlke-lexicon.js');
 const Query = require('../app/src/main/assets/web/mlke-query.js');
 const Translator = require('../app/src/main/assets/web/mlke-translator.js');
 const Knowledge = require('../app/src/main/assets/web/mlke-knowledge.js');
+const Answer = require('../app/src/main/assets/web/local-answer.js');
 
-test('MLKE Lexicon: lookups Arabic/English terms and expands query terms', () => {
-  const lex = new Lexicon();
-  const tcp = lex.lookupTerm('TCP');
-  assert.ok(tcp);
-  assert.equal(tcp.term_en, 'Transmission Control Protocol');
+test('MLKE Integration: Arabic question on English PDF passage ("ما وظيفة DNS؟" on page 7)', () => {
+  const englishDoc = [{
+    id: 'doc1',
+    name: 'Networking.pdf',
+    type: 'pdf',
+    pages: [
+      { page: 1, text: 'Introduction to Networking.' },
+      { page: 7, text: 'DNS translates domain names into IP addresses.' }
+    ]
+  }];
 
-  const expanded = lex.expandQueryTerms('TCP');
-  assert.ok(expanded.includes('TCP'));
-  assert.ok(expanded.some(t => t.includes('التحكم')));
-
-  const added = lex.addOrUpdate({
-    term_ar: 'المنفذ',
-    term_en: 'Port',
-    abbreviation: 'PORT',
-    domain: 'networking'
+  const res = Answer.answer({
+    documents: englishDoc,
+    question: 'ما وظيفة DNS؟',
+    mode: 'strict'
   });
-  assert.ok(added);
-  assert.equal(lex.lookupTerm('PORT').term_en, 'Port');
+
+  assert.equal(res.origin, 'source');
+  assert.equal(res.references.length, 1);
+  assert.equal(res.references[0].docName, 'Networking.pdf');
+  assert.equal(res.references[0].page, 7);
+  assert.match(res.text, /الترجمة/);
+  assert.match(res.text, /DNS translates domain names into IP addresses/);
 });
 
-test('MLKE Query: analyzes language and classifies question intents', () => {
-  assert.equal(Query.detectLanguage('ما هو TCP؟'), 'ar');
-  assert.equal(Query.detectLanguage('What is DNS?'), 'en');
+test('MLKE Integration: Arabic multiword phrase ("ما وظيفة بروتوكول التحكم بالنقل؟")', () => {
+  const doc = [{
+    id: 'doc2',
+    name: 'Protocols.pdf',
+    type: 'pdf',
+    pages: [{ page: 3, text: 'TCP provides reliable data transmission between devices.' }]
+  }];
 
-  assert.equal(Query.classifyIntent('ما هو TCP؟'), 'definition');
-  assert.equal(Query.classifyIntent('ما وظيفة DNS؟'), 'function');
-  assert.equal(Query.classifyIntent('قارن بين TCP وUDP'), 'comparison');
-  assert.equal(Query.classifyIntent('ترجم هذه الفقرة'), 'translation');
+  const res = Answer.answer({
+    documents: doc,
+    question: 'ما وظيفة بروتوكول التحكم بالنقل؟',
+    mode: 'strict'
+  });
 
-  const parsed = Query.parseQuery('ما هو TCP؟');
-  assert.equal(parsed.intent, 'definition');
-  assert.ok(parsed.entities.includes('TCP'));
+  assert.equal(res.origin, 'source');
+  assert.equal(res.references[0].page, 3);
+  assert.match(res.text, /يوفر/);
 });
 
-test('MLKE Translator: performs rule-based technical translation', () => {
-  const res1 = Translator.translateSentence('TCP provides reliable data transmission between devices.');
-  assert.ok(res1.translated.includes('يوفر'));
-  assert.ok(res1.translated.length > 5);
+test('MLKE Integration: Side-by-side comparison ("قارن بين TCP وUDP")', () => {
+  const doc = [{
+    id: 'doc3',
+    name: 'Comparison.pdf',
+    type: 'pdf',
+    pages: [
+      { page: 1, text: 'TCP provides reliable data transmission.' },
+      { page: 2, text: 'UDP contains fast data transmission.' }
+    ]
+  }];
 
-  const res2 = Translator.translateSentence('DNS translates domain names into IP addresses.');
-  assert.ok(res2.translated.includes('يحول'));
-  assert.ok(res2.translated.includes('أسماء'));
+  const res = Answer.answer({
+    documents: doc,
+    question: 'قارن بين TCP وUDP',
+    mode: 'strict'
+  });
+
+  assert.equal(res.origin, 'source');
+  assert.match(res.text, /مقارنة بين TCP وUDP/);
+  assert.match(res.text, /الوصف والوظيفة/);
 });
 
-test('MLKE Knowledge: extracts facts and infers structured comparison answers', () => {
-  const kb = new Knowledge.KnowledgeBase();
-  const facts = Knowledge.extractFactsFromSentence('TCP provides reliable data transmission.', 'Net.pdf', 5);
-  assert.equal(facts.length, 1);
-  kb.addFact(facts[0]);
-
-  assert.equal(kb.queryFacts('TCP').length, 1);
-
-  const queryObj = { intent: 'comparison', entities: ['TCP', 'UDP'] };
-  const reply = Knowledge.inferAnswer(queryObj, [], kb);
-  assert.ok(reply);
-  assert.match(reply.text, /مقارنة بين TCP وUDP/);
+test('MLKE Integration: Missing evidence question returns explicit notice', () => {
+  const doc = [{ id: 'd', name: 'a.pdf', type: 'pdf', pages: [{ page: 1, text: 'Some unrelated text.' }] }];
+  const res = Answer.answer({ documents: doc, question: 'ما عيوب بروتوكول البوتسواني؟', mode: 'strict' });
+  assert.equal(res.origin, 'miss');
+  assert.match(res.text, /لم أجد معلومات كافية/);
 });

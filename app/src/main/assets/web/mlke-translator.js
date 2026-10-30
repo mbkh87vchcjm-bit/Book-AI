@@ -5,41 +5,43 @@
 }(typeof globalThis !== 'undefined' ? globalThis : this, function (LexiconClass) {
   'use strict';
 
-  var lexicon = new LexiconClass();
+  function getLexicon() {
+    return LexiconClass.getSharedInstance ? LexiconClass.getSharedInstance() : new LexiconClass();
+  }
 
   var VERB_MAP = {
-    'provides': 'يوفر',
-    'provide': 'يوفر',
-    'translates': 'يحول',
-    'translate': 'يحول',
-    'contains': 'يحتوي على',
-    'contain': 'يحتوي على',
-    'executes': 'ينفذ',
-    'execute': 'ينفذ',
-    'manages': 'يدير',
-    'manage': 'يدير',
-    'controls': 'يتحكم في',
-    'control': 'يتحكم في',
-    'identifies': 'يحدد',
-    'identify': 'يحدد',
-    'stores': 'يخزن',
+    'provides': { ar: 'يوفر', tense: 'present' },
+    'provide': { ar: 'يوفر', tense: 'present' },
+    'translates': { ar: 'يحوّل', tense: 'present' },
+    'translate': { ar: 'يحول', tense: 'present' },
+    'contains': { ar: 'يحتوي على', tense: 'present' },
+    'contain': { ar: 'يحتوي على', tense: 'present' },
+    'executes': { ar: 'تنفذ', tense: 'present' },
+    'execute': { ar: 'ينفذ', tense: 'present' },
+    'manages': { ar: 'يدير', tense: 'present' },
+    'manage': { ar: 'يدير', tense: 'present' },
+    'controls': { ar: 'يتحكم في', tense: 'present' },
+    'control': { ar: 'يتحكم في', tense: 'present' },
+    'identifies': { ar: 'يحدد', tense: 'present' },
+    'identify': { ar: 'يحدد', tense: 'present' },
+    'stores': { ar: 'يخزن', tense: 'present' },
     'store': 'يخزن',
-    'uses': 'يستخدم',
-    'use': 'يستخدم',
-    'used': 'مستخدم',
-    'running': 'المشغلة'
+    'uses': { ar: 'يستخدم', tense: 'present' },
+    'use': { ar: 'يستخدم', tense: 'present' },
+    'used': { ar: 'مستخدم', tense: 'passive' },
+    'running': { ar: 'المشغلة', tense: 'participle' }
   };
 
   var COMMON_DICT = {
-    'reliable': 'موثوقة',
-    'ordered': 'مرتبة',
+    'reliable': 'موثوقًا',
+    'ordered': 'ومرتبًا',
     'data': 'البيانات',
-    'transmission': 'نقل',
+    'transmission': 'لنقل',
     'devices': 'الأجهزة',
     'device': 'جهاز',
     'between': 'بين',
     'names': 'أسماء',
-    'domain': 'النطاق',
+    'domain': 'النطاقات',
     'into': 'إلى',
     'addresses': 'عناوين',
     'address': 'عنوان',
@@ -53,24 +55,26 @@
     'memory': 'الذاكرة',
     'temporary': 'مؤقتة',
     'programs': 'البرامج',
-    'hardware': 'العتاد',
-    'software': 'البرامج',
-    'resources': 'الموارد',
-    'uniquely': 'بشكل فريد',
+    'hardware': 'الأجهزة',
+    'software': 'البرمجيات',
+    'resources': 'موارد',
+    'uniquely': 'بصورة فريدة',
     'each': 'كل',
     'incoming': 'الواردة',
     'outgoing': 'الصادرة',
     'network': 'الشبكة',
-    'traffic': 'حركة المرور'
+    'traffic': 'حركة مرور'
   };
 
   function translateSentence(sentence) {
+    var lexicon = getLexicon();
     var original = String(sentence || '').trim();
-    if (!original) return { translated: '', confidence: 0 };
+    if (!original) return { translated: '', confidence: 0, status: 'empty' };
 
+    // Exact lexicon match
     var phraseMatch = lexicon.lookupTerm(original);
     if (phraseMatch && phraseMatch.term_ar) {
-      return { translated: phraseMatch.term_ar, confidence: 0.95 };
+      return { translated: phraseMatch.term_ar, confidence: 0.95, status: 'complete' };
     }
 
     var tokens = original.match(/[a-zA-Z0-9]+|[^\s\w]/g) || [];
@@ -83,24 +87,24 @@
       var word = tokens[i];
       var lower = word.toLowerCase();
 
-      // Check 3-word technical phrases
+      // Check 3-word technical phrase
       if (i + 2 < tokens.length) {
         var p3 = tokens[i] + ' ' + tokens[i+1] + ' ' + tokens[i+2];
         var term3 = lexicon.lookupTerm(p3);
         if (term3 && term3.term_ar) {
-          translatedTokens.push(term3.term_ar);
+          translatedTokens.push(term3.term_ar + (term3.abbreviation ? ' (' + term3.abbreviation + ')' : ''));
           matchedPhrases++;
           i += 3;
           continue;
         }
       }
 
-      // Check 2-word technical phrases
+      // Check 2-word technical phrase
       if (i + 1 < tokens.length) {
         var p2 = tokens[i] + ' ' + tokens[i+1];
         var term2 = lexicon.lookupTerm(p2);
         if (term2 && term2.term_ar) {
-          translatedTokens.push(term2.term_ar);
+          translatedTokens.push(term2.term_ar + (term2.abbreviation ? ' (' + term2.abbreviation + ')' : ''));
           matchedPhrases++;
           i += 2;
           continue;
@@ -110,23 +114,21 @@
       // Check single word lexicon match
       var singleTerm = lexicon.lookupTerm(word);
       if (singleTerm && singleTerm.term_ar) {
-        translatedTokens.push(singleTerm.term_ar);
+        translatedTokens.push(singleTerm.term_ar + (singleTerm.abbreviation ? ' (' + singleTerm.abbreviation + ')' : ''));
         matchedPhrases++;
         i++;
         continue;
       }
 
-      // Check verbs and common words
+      // Check verbs & common dictionary
       if (VERB_MAP[lower]) {
-        translatedTokens.push(VERB_MAP[lower]);
+        translatedTokens.push(typeof VERB_MAP[lower] === 'object' ? VERB_MAP[lower].ar : VERB_MAP[lower]);
       } else if (COMMON_DICT[lower]) {
         translatedTokens.push(COMMON_DICT[lower]);
       } else if (/^[0-9]+$/.test(word) || /^[^\w\s]$/.test(word)) {
         translatedTokens.push(word);
       } else if (['a', 'an', 'the', 'is', 'are', 'by', 'of', 'in', 'to', 'and'].indexOf(lower) >= 0) {
-        // Skip structural particles or handle inline
-      } else if (lower === 'data') {
-        translatedTokens.push('البيانات');
+        // Skip structural articles/auxiliaries
       } else {
         translatedTokens.push('[' + word + ']');
         unknownWords.push(word);
@@ -135,12 +137,12 @@
     }
 
     var arResult = translatedTokens.join(' ').replace(/\s+/g, ' ').trim();
-    var confidence = unknownWords.length === 0 ? 0.88 : (matchedPhrases > 0 ? 0.65 : 0.40);
+    var status = unknownWords.length === 0 ? 'complete' : (matchedPhrases > 0 ? 'partial' : 'unsupported');
 
     return {
       original: original,
       translated: arResult,
-      confidence: confidence,
+      status: status,
       unknownWords: unknownWords
     };
   }

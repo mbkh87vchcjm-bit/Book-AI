@@ -7,7 +7,12 @@
 
   var STOP = new Set(('from in on at by with for of to is are was were a an the and or as it its be what who how why when where explain tell me about this that those these please give my your based document documents source sources file files من في على عن إلى الى ما ماذا لماذا هل هذا هذه ذلك تلك هو هي هم أنا انت ان كان كانت يكون تكون كيف كم متى أين اين مع دون او و ثم قد لقد عند حتى كل بين بعد قبل الذي التي الذين والتي وهو وهي بأن لان أن إن بعض هناك يوجد وجود حسب حول لي ليش اي أي فقط شرح اشرح اريد أريد أعطني اعطني سؤال التالي التاليه التالية يلي لدي عندي').split(/\s+/));
 
-  var lexicon = LexiconClass ? new LexiconClass() : null;
+  var getLexicon = function () {
+    if (LexiconClass) {
+      return LexiconClass.getSharedInstance ? LexiconClass.getSharedInstance() : new LexiconClass();
+    }
+    return null;
+  };
 
   function normalize(text) {
     var s = String(text || '');
@@ -115,17 +120,31 @@
     }
     if (!rawTerms.length) return { references: [], overview: false, queryWords: rawTerms };
 
-    // Bilingual Lexicon Query Expansion
-    var expandedTermsSet = new Set(rawTerms);
+    // Weighted Query Expansion
+    var termWeights = {};
+    rawTerms.forEach(function (t) { termWeights[t] = 1.0; });
+
+    var lexicon = getLexicon();
     if (lexicon) {
-      rawTerms.forEach(function (t) {
-        var exp = lexicon.expandQueryTerms(t);
-        exp.forEach(function (e) {
-          words(e).forEach(function (w) { expandedTermsSet.add(w); });
-        });
-      });
+      var normQuery = normalize(query);
+      var wordsInQuery = normQuery.match(/[a-z0-9\u0621-\u063a\u0641-\u064a]+/g) || [];
+      for (var len = 4; len >= 1; len--) {
+        for (var i = 0; i <= wordsInQuery.length - len; i++) {
+          var phrase = wordsInQuery.slice(i, i + len).join(' ');
+          var match = lexicon.lookupTerm(phrase);
+          if (match) {
+            var expansions = lexicon.expandQueryTerms(phrase);
+            expansions.forEach(function (exp) {
+              words(exp).forEach(function (w) {
+                if (!termWeights[w]) termWeights[w] = 0.75;
+              });
+            });
+          }
+        }
+      }
     }
-    var terms = Array.from(expandedTermsSet);
+
+    var terms = Object.keys(termWeights);
 
     // Standard BM25 Scoring Formula
     var k1 = 1.2, b = 0.75;
@@ -148,7 +167,7 @@
           var nDocs = all.length;
           var idf = Math.log(1 + (nDocs - df[term] + 0.5) / (df[term] + 0.5));
           var termScore = idf * ((tf * (k1 + 1)) / (tf + k1 * (1 - b + b * (docLen / (avgDocLength || 1)))));
-          score += termScore;
+          score += termScore * (termWeights[term] || 0.5);
         }
       });
 
@@ -157,8 +176,8 @@
         score *= 2.0;
       }
 
-      var required = terms.length >= 3 ? 2 : 1;
-      if (matched < required || (terms.length > 1 && matched / terms.length < 0.2)) score = 0;
+      var required = terms.length >= 3 ? 1 : 1;
+      if (matched < required) score = 0;
 
       return {chunk: chunk, score: score, matched: matched};
     }).filter(function (x) { return x.score > 0; })
