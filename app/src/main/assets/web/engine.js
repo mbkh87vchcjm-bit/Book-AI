@@ -124,6 +124,7 @@
     terms.forEach(function (term) {
       df[term] = tokenSets.reduce(function (n, ts) { return n + (ts.indexOf(term) >= 0 ? 1 : 0); }, 0);
     });
+    var normalizedQuery = normalize(query);
     var scored = all.map(function (chunk, i) {
       var ts = tokenSets[i], score = 0, matched = 0;
       terms.forEach(function (term) {
@@ -133,7 +134,11 @@
           score += Math.log(1 + (all.length + 0.5) / (df[term] + 0.5)) * (1 + Math.log(tf)) * (term.length >= 5 ? 1.15 : 1);
         }
       });
-      var required = terms.length >= 3 ? 2 : 1;
+      var normalizedChunkText = normalize(chunk.text);
+      if (normalizedQuery.length >= 4 && normalizedChunkText.indexOf(normalizedQuery) >= 0) {
+        score *= 2.0;
+      }
+      var required = terms.length >= 3 ? 2 : (terms.length === 1 ? 1 : 1);
       if (matched < required || (terms.length > 1 && matched / terms.length < 0.3)) score = 0;
       return {chunk: chunk, score: score, matched: matched};
     }).filter(function (x) { return x.score > 0; })

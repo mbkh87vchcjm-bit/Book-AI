@@ -147,6 +147,67 @@
     return chosen;
   }
 
+  function generateStudyFeatures(question, docs, found, limit) {
+    var q = E.normalize(question);
+    var isQuestionGen = /(?:اسئلة|أسئلة|تمارين|اختبار|اسئلة دراسية|أسئلة دراسية|quiz|questions|exercises)/.test(q);
+    var isMcq = /(?:خيارات|اختيار من متعدد|صح ام خطا|صح أو خطأ|صح وخطأ|mcq|true or false)/.test(q);
+    var isExplain = /(?:اشرح|توضيح|مفهوم|ما معنى|ما مفهوم|explain|clarify|concept)/.test(q);
+
+    if (!isQuestionGen && !isMcq && !isExplain) return null;
+
+    var selected = selectSentences(docs, found, question, limit);
+    if (!selected.length) {
+      selected = selectSentences(docs, {overview: true, references: []}, question, limit);
+    }
+    if (!selected.length) return null;
+
+    var refs = selected.map(function (item) { return {docId: item.ref.docId, docName: item.ref.docName,
+      page: item.ref.page, type: item.ref.type, excerpt: E.shorten(item.text, 600), ocr: !!item.ref.ocr}; });
+
+    if (isMcq) {
+      var bodyItems = selected.map(function (item, i) {
+        var cleanText = item.text.replace(/^[•\-*\d.\s]+/, '');
+        var num = i + 1;
+        if (i % 2 === 0) {
+          return 'السؤال [' + num + ']: عبارة صحيحة أم خاطئة؟\n«' + cleanText + '»\n' +
+            'أ) صحيحة (مباشرة من ' + item.ref.docName + ' صفحة ' + item.ref.page + ')\n' +
+            'ب) خاطئة';
+        } else {
+          return 'السؤال [' + num + ']: بناءً على النص القائل «' + cleanText + '»:\n' +
+            'أ) النص يؤكد هذه الحقيقة بالكامل\n' +
+            'ب) النص يناقض هذه الحقيقة\n' +
+            'ج) المرجع لا يتطرق إلى هذه المعلومة';
+        }
+      });
+      var header = 'تمارين وااختبارات دراسية مستخرجة من مراجعك:';
+      var text = header + '\n\n' + bodyItems.join('\n\n') + '\n\nملاحظة: الأسئلة مصوغة مباشرة من نصوص المراجع واقتباساتها (توليد مبرمج مقيّد).';
+      return {text: text, origin: 'source', references: refs};
+    }
+
+    if (isQuestionGen) {
+      var qItems = selected.map(function (item, i) {
+        var cleanText = item.text.replace(/^[•\-*\d.\s]+/, '');
+        return 'سؤال [' + (i + 1) + ']: استنادًا إلى مرجع (' + item.ref.docName + ' صفحة ' + item.ref.page + '):\n' +
+          '«' + cleanText + '»\n' +
+          'السؤال: كيف يوضح المرجع المفهوم الوارد في هذا المقطع؟';
+      });
+      var qHeader = 'أسئلة مراجعة واستذكار مبنية على مراجعك:';
+      var qText = qHeader + '\n\n' + qItems.join('\n\n');
+      return {text: qText, origin: 'source', references: refs};
+    }
+
+    if (isExplain) {
+      var expItems = selected.map(function (item, i) {
+        return '[' + (i + 1) + '] الشرح والمقطع من (' + item.ref.docName + ' صفحة ' + item.ref.page + '):\n«' + item.text + '»';
+      });
+      var expHeader = 'توضيح المفاهيم والمقاطع المستخرجة من مراجعك:';
+      var expText = expHeader + '\n\n' + expItems.join('\n\n') + '\n\nهذا التوضيح يعتمد حصريًا على النصوص المقتبسة من المرجع.';
+      return {text: expText, origin: 'source', references: refs};
+    }
+
+    return null;
+  }
+
   function answer(options) {
     options = options || {};
     var question = String(options.question || '').trim(), docs = options.documents || [];
@@ -158,6 +219,10 @@
         : {text: calculation.text, origin: 'calculation', references: []};
     }
     var found = E.search(docs, question, 5, options.priorQuestion || '');
+
+    var studyFeature = generateStudyFeatures(question, docs, found, limit);
+    if (studyFeature) return studyFeature;
+
     var selected = selectSentences(docs, found, question, limit);
     if (!selected.length) return {text: strict && !docs.length
       ? 'أضف مرجعًا أولًا؛ وضع المصادر فقط لا يجيب من خارجها.'

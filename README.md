@@ -102,3 +102,16 @@ scripts/build-apk.sh
 ### بنية الحزمة
 
 اسم الحزمة `com.midad.bookai.local`، والحد الأدنى Android 9 (API 28). لا توجد مكتبات JNI أو أوزان نموذج داخل الحزمة؛ كل ما يلزم للبحث والحساب وقراءة الصور موجود في أصول التطبيق.
+
+## التقييم الفني للمفهوم والتأطير المستقبلي لنماذج LiteRT / MediaPipe LLM والبحث الدلالي
+
+عند تقييم دمج نموذج لغوي محلي فعلي (مثل LiteRT-LM / MediaPipe LLM Inference) والبحث الدلالي (Embedding Model) على نظام Android:
+
+1. **بنية المحرك المحلي والواجهة**:
+   - يتطلب تشغيل LiteRT-LM أو MediaPipe Task C++ APIs على Android وجود مكتبات ناتجة ذات امتداد Native (`.so`) مربوطة بـ JNI إلى جانب طبقة C++ Native Wrapper. لا يدعم WebView بمفرده تشغيل نماذج 1B - 3B مباشرة بلغة JavaScript بدون WebGPU المحظور على معظم أجهزة Android WebView.
+   - يتطلب الاستدلال الدلالي (Vector Embeddings) نموذجًا محليًا مساندًا (مثل All-MiniLM-L6-v2 أو BERT Arabic Quantized tflite) يُشغّل عبر TFLite C++ Runtime لاستخراج المتجهات وحفظها في قاعدة بيانات متجهات محلية (مثل SQLite Vector / HNSWlib Native).
+2. **استيراد النموذج عبر SAF**:
+   - يجب استيراد أوزان النموذج (بصيغة `.bin` أو `.task` المكيّفة لـ LiteRT) من التخزين الخارجي بواسطة Android Storage Access Framework (`ACTION_OPEN_DOCUMENT`) لتفادي صلاحيات التخزين العامة وتجنب تضمين أوزان ضخمة (١.٥ إلى ٣ غيغابايت) داخل APK.
+3. **متطلبات العتاد والقيود**:
+   - الأجهزة المطلوبة: معالج ARM64 مع 6GB - 8GB RAM كحد أدنى ويدعم Vulkan GPU Acceleration.
+   - قيود السرعة والذاكرة: تستهلك النماذج أداءً عاليًا من البطارية والذاكرة العشوائية؛ لذلك يُعتمد المحرك الحالي Deterministic Local Extractive Engine كخيار افتراضي سريع ومضمون الخصوصية وموثوق الإسناد كليًا.
