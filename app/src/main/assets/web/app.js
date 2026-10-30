@@ -206,6 +206,35 @@
     openModal(modalShell(ref.docName, 'المصدر ' + fmt(index + 1) + ' · ' + label, content, footer), 'reference');
     if ($('open-full-page')) $('open-full-page').onclick = function () { openDocument(ref.docId, ref.page); };
   }
+  function openLexiconManager() {
+    if (processing) { toast('انتظر حتى تنتهي العملية الحالية.'); return; }
+    var content = '<section class="settings-section"><h3>توسيع القاموس التقني المزدوج</h3><p>أضف مصطلحات تقنية جديدة أو صحح مصطلحات حالية لربط البحث والاستعلامات بين العربية والإنجليزية محليًا.</p></section>' +
+      '<label class="field"><span>المصطلح بالعربية</span><input class="prompt-box" id="lex-ar" placeholder="مثال: تبديل الحزم"></label>' +
+      '<label class="field"><span>المصطلح بالإنجليزية</span><input class="prompt-box" id="lex-en" placeholder="مثال: Packet Switching"></label>' +
+      '<label class="field"><span>الاختصار (إن وجد)</span><input class="prompt-box" id="lex-abbr" placeholder="مثال: PS"></label>' +
+      '<label class="field"><span>المجال التقني</span><select id="lex-domain"><option value="networking">شبكات الحاسوب (Networking)</option><option value="databases">قواعد البيانات (Databases)</option><option value="operating-systems">أنظمة التشغيل (OS)</option><option value="architecture">معمارية الحاسوب (Architecture)</option><option value="cybersecurity">الأمن السيبراني (Cybersecurity)</option></select></label>' +
+      '<label class="field"><span>التعريف المباشر بالعربية</span><textarea id="lex-def" style="min-height:80px" placeholder="تعريف مختصر للمصطلح..."></textarea></label>';
+    openModal(modalShell('إضافة مصطلح للقاموس', 'توسيع المعرفة المحلية بدون إنترنت.', content, '<button class="button-secondary" id="lex-cancel">إلغاء</button><button class="button-primary" id="lex-save">حفظ المصطلح</button>'), 'lexicon');
+    $('lex-cancel').onclick = closeModal;
+    $('lex-save').onclick = function () {
+      var ar = $('lex-ar').value.trim(), en = $('lex-en').value.trim(), abbr = $('lex-abbr').value.trim(), dom = $('lex-domain').value, def = $('lex-def').value.trim();
+      if (!ar && !en) { toast('أدخل المصطلح بالعربية أو بالإنجليزية.'); return; }
+      if (!state.userLexicon) state.userLexicon = [];
+      state.userLexicon.push({
+        id: 'user-' + Date.now(),
+        term_ar: ar,
+        term_en: en,
+        abbreviation: abbr,
+        domain: dom,
+        definition_ar: def,
+        verified: true
+      });
+      saveState();
+      closeModal();
+      toast('تمت إضافة المصطلح للقاموس المحلي.');
+    };
+  }
+
   function openSettings() {
     if (processing) { toast('انتظر انتهاء قراءة المصدر أولًا.'); return; }
     var s = state.settings;
@@ -407,6 +436,7 @@
     $('menu-btn').onclick = function () { openDrawer('rail'); }; $('close-rail').onclick = closeDrawers;
     $('mobile-sources').onclick = function () { openDrawer('sources-panel'); }; $('close-sources').onclick = closeDrawers; $('drawer-backdrop').onclick = closeDrawers;
     $('settings-btn').onclick = openSettings; $('top-settings').onclick = openSettings; $('mode-shortcut').onclick = openSettings;
+    if ($('lexicon-btn')) $('lexicon-btn').onclick = openLexiconManager;
     $('new-session').onclick = function () { if (isBusy()) return; var s = newSession(); state.sessions.unshift(s); state.activeId = s.id; saveState(); closeDrawers(); renderAll(); };
     $('session-more').onclick = function () { if (isBusy()) { toast('انتظر حتى تنتهي العملية الحالية.'); return; } openSessionOptions(); };
     ['add-source', 'mobile-add', 'welcome-upload', 'attach-btn'].forEach(function (id) { $(id).onclick = chooseFiles; });

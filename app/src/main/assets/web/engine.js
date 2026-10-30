@@ -1,11 +1,13 @@
-/* Local, deterministic retrieval helpers. No network or model calls live here. */
+/* Local, deterministic retrieval helpers. Standard BM25 & Cross-Language Lexicon Expansion. */
 (function (root, factory) {
-  if (typeof module === 'object' && module.exports) module.exports = factory();
-  else root.MidadEngine = factory();
-}(typeof globalThis !== 'undefined' ? globalThis : this, function () {
+  if (typeof module === 'object' && module.exports) module.exports = factory(require('./mlke-lexicon.js'));
+  else root.MidadEngine = factory(root.MlkeLexicon);
+}(typeof globalThis !== 'undefined' ? globalThis : this, function (LexiconClass) {
   'use strict';
 
-  var STOP = new Set(('من في على عن إلى الى ما ماذا لماذا هل هذا هذه ذلك تلك هو هي هم أنا انت ان كان كانت يكون تكون كيف كم متى أين اين مع دون او و ثم قد لقد عند حتى كل بين بعد قبل الذي التي الذين والتي وهو وهي بأن لان أن إن بعض هناك يوجد وجود حسب حول لي ليش اي أي فقط شرح اشرح اريد أريد أعطني اعطني سؤال التالي التاليه التالية يلي لدي عندي the a an is are was were of to for on in at by with from and or as it its be what who how why when where explain tell me about this that those these please give my your based document documents source sources file files').split(/\s+/));
+  var STOP = new Set(('from in on at by with for of to is are was were a an the and or as it its be what who how why when where explain tell me about this that those these please give my your based document documents source sources file files من في على عن إلى الى ما ماذا لماذا هل هذا هذه ذلك تلك هو هي هم أنا انت ان كان كانت يكون تكون كيف كم متى أين اين مع دون او و ثم قد لقد عند حتى كل بين بعد قبل الذي التي الذين والتي وهو وهي بأن لان أن إن بعض هناك يوجد وجود حسب حول لي ليش اي أي فقط شرح اشرح اريد أريد أعطني اعطني سؤال التالي التاليه التالية يلي لدي عندي').split(/\s+/));
+
+  var lexicon = LexiconClass ? new LexiconClass() : null;
 
   function normalize(text) {
     var s = String(text || '');
@@ -35,10 +37,6 @@
       .map(stem).filter(function (x) { return x.length > 1 && !STOP.has(x); });
   }
 
-
-  // PDF.js may return Arabic PDFs as individual visual-order glyphs (not words).
-  // Reassemble those lines without inserting a space between every glyph, and
-  // reverse only strongly RTL fragmented runs whose x positions progress LTR.
   function extractPdfText(items) {
     var lines = [], line = [];
     function flush() {
@@ -84,7 +82,6 @@
         if (piece) out.push({docId: doc.id, docName: doc.name, page: page.page, type: doc.type, text: piece, offset: cursor, ocr: !!page.ocr});
         if (end >= text.length) break;
         var next = Math.max(cursor + 1, end - overlap);
-        // Start at a word boundary, without skipping the overlap entirely.
         var wordStart = text.indexOf(' ', next);
         cursor = wordStart > -1 && wordStart < end ? wordStart + 1 : next;
       }
@@ -102,54 +99,78 @@
     var all = [];
     (documents || []).forEach(function (d) { all = all.concat(chunksForDocument(d)); });
     if (!all.length) return { references: [], overview: false, queryWords: [] };
-    var terms = Array.from(new Set(words(query)));
-    // Only inherit the previous question when the current one has no topical
-    // words. Adding old terms to a new one-word topic can suppress its real hit
-    // (or falsely cite an unrelated page from the previous turn).
-    if (!terms.length && priorQuery) terms = Array.from(new Set(words(priorQuery)));
+
+    var rawTerms = words(query);
+    if (!rawTerms.length && priorQuery) rawTerms = words(priorQuery);
     var overview = isOverview(query);
+
     if (overview) {
-      // Overview requests have no topical terms. Select representative beginnings, one per document/page.
       var seen = new Set();
       var samples = all.filter(function (c) {
         var key = c.docId + ':' + c.page;
         if (seen.has(key)) return false;
         seen.add(key); return true;
       }).slice(0, limit);
-      return { references: samples, overview: true, queryWords: terms };
+      return { references: samples, overview: true, queryWords: rawTerms };
     }
-    if (!terms.length) return { references: [], overview: false, queryWords: terms };
+    if (!rawTerms.length) return { references: [], overview: false, queryWords: rawTerms };
+
+    // Bilingual Lexicon Query Expansion
+    var expandedTermsSet = new Set(rawTerms);
+    if (lexicon) {
+      rawTerms.forEach(function (t) {
+        var exp = lexicon.expandQueryTerms(t);
+        exp.forEach(function (e) {
+          words(e).forEach(function (w) { expandedTermsSet.add(w); });
+        });
+      });
+    }
+    var terms = Array.from(expandedTermsSet);
+
+    // Standard BM25 Scoring Formula
+    var k1 = 1.2, b = 0.75;
     var tokenSets = all.map(function (c) { return words(c.text); });
+    var docLengths = tokenSets.map(function (ts) { return ts.length; });
+    var avgDocLength = docLengths.reduce(function (a, b) { return a + b; }, 0) / (all.length || 1);
+
     var df = {};
     terms.forEach(function (term) {
       df[term] = tokenSets.reduce(function (n, ts) { return n + (ts.indexOf(term) >= 0 ? 1 : 0); }, 0);
     });
+
     var normalizedQuery = normalize(query);
     var scored = all.map(function (chunk, i) {
-      var ts = tokenSets[i], score = 0, matched = 0;
+      var ts = tokenSets[i], docLen = docLengths[i], score = 0, matched = 0;
       terms.forEach(function (term) {
         var tf = ts.reduce(function (n, token) { return n + (token === term ? 1 : 0); }, 0);
         if (tf) {
           matched++;
-          score += Math.log(1 + (all.length + 0.5) / (df[term] + 0.5)) * (1 + Math.log(tf)) * (term.length >= 5 ? 1.15 : 1);
+          var nDocs = all.length;
+          var idf = Math.log(1 + (nDocs - df[term] + 0.5) / (df[term] + 0.5));
+          var termScore = idf * ((tf * (k1 + 1)) / (tf + k1 * (1 - b + b * (docLen / (avgDocLength || 1)))));
+          score += termScore;
         }
       });
+
       var normalizedChunkText = normalize(chunk.text);
       if (normalizedQuery.length >= 4 && normalizedChunkText.indexOf(normalizedQuery) >= 0) {
         score *= 2.0;
       }
-      var required = terms.length >= 3 ? 2 : (terms.length === 1 ? 1 : 1);
-      if (matched < required || (terms.length > 1 && matched / terms.length < 0.3)) score = 0;
+
+      var required = terms.length >= 3 ? 2 : 1;
+      if (matched < required || (terms.length > 1 && matched / terms.length < 0.2)) score = 0;
+
       return {chunk: chunk, score: score, matched: matched};
     }).filter(function (x) { return x.score > 0; })
       .sort(function (a, b) { return b.score - a.score || b.matched - a.matched || a.chunk.offset - b.chunk.offset; });
-    // Avoid showing overlapping pieces of the same page as multiple independent citations.
+
     var pages = new Set();
     var refs = [];
     scored.forEach(function (x) {
       var key = x.chunk.docId + ':' + x.chunk.page;
       if (refs.length < limit && !pages.has(key)) { pages.add(key); refs.push(x.chunk); }
     });
+
     return {references: refs, overview: false, queryWords: terms};
   }
 
