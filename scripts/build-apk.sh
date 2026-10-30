@@ -21,7 +21,7 @@ cp "$ROOT/third_party/"*.txt "$ROOT/third_party/NOTICE.md" "$OUT/assets/licenses
   --version-code 2 --version-name 2.0.0 -A "$OUT/assets" \
   -o "$OUT/base.apk" "$OUT/compiled/resources.zip"
 find "$ROOT/app/src/main/java" "$OUT/generated" -name '*.java' -print > "$OUT/sources.txt"
-"$JAVA_HOME/bin/javac" -encoding UTF-8 -source 8 -target 8 -classpath "$ANDROID_JAR" -d "$OUT/classes" @"$OUT/sources.txt"
+"$JAVA_HOME/bin/javac" -parameters -encoding UTF-8 -source 8 -target 8 -classpath "$ANDROID_JAR" -d "$OUT/classes" @"$OUT/sources.txt"
 (cd "$OUT/classes" && "$JAVA_HOME/bin/jar" cf "$OUT/classes.jar" .)
 "$BT/d8" --min-api 28 --lib "$ANDROID_JAR" --output "$OUT/dex" "$OUT/classes.jar"
 cp "$OUT/base.apk" "$OUT/unsigned.apk"
