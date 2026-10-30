@@ -47,7 +47,7 @@ function server() {
 }
 async function browserPage(url, init) {
   const browser = await chromium.launch({executablePath, headless: true,
-    args: ['--no-sandbox', '--no-zygote', '--single-process', '--disable-dev-shm-usage', '--allow-file-access-from-files']});
+    args: ['--no-sandbox', '--no-zygote', '--disable-dev-shm-usage', '--allow-file-access-from-files']});
   openBrowsers.add(browser);
   const page = await browser.newPage({viewport: {width: 390, height: 844}});
   const errors = [];
