@@ -61,10 +61,24 @@
 
   function baseWords(text) {
     var pattern = /c\+\+|c#|f#|tcp\/ip|udp\/ip|http\/2|wi-fi|802\.11[a-z0-9]*|[a-z0-9]+(?:[+#]|\/[a-z0-9]+|\.[a-z0-9]+)*|[\u0621-\u063a\u0641-\u064a\u066e-\u06d3\u06fa-\u06fc\u0750-\u077f\u08a0-\u08c9]+/g;
-    var raw = normalize(text).match(pattern) || [];
-    return Array.from(new Set(raw.filter(function (token) {
-      return token.length > 1 && (/[+#/.]/.test(token) || /^\d/.test(token) || !STOP.has(token));
-    })));
+    var raw = normalize(text).match(pattern) || [], output = [], seen = new Set();
+    raw.forEach(function (token) {
+      var technical = /[+#/.]/.test(token) || /^\d/.test(token);
+      if (!technical && (token.length <= 1 || STOP.has(token))) return;
+      var stemmed = token;
+      if (/^[\u0600-\u06ff]+$/.test(token)) {
+        // Safe morphology for embeddings: known prefixes/article and suffixes only.
+        if (stemmed.length > 5 && /^(وال|بال|كال|فال|لل)/.test(stemmed)) stemmed = stemmed.replace(/^(وال|بال|كال|فال|لل)/, '');
+        else if (stemmed.length > 4 && /^ال/.test(stemmed)) stemmed = stemmed.slice(2);
+        if (stemmed.length > 4 && /(ات|ون|ين|ها|هم)$/.test(stemmed)) stemmed = stemmed.slice(0, -2);
+      } else if (/^[a-z]+$/.test(stemmed) && stemmed.length > 5) {
+        stemmed = stemmed.replace(/(ing|ed|es|s)$/, '');
+      }
+      if (stemmed.length > 1 && (technical || !STOP.has(stemmed)) && !seen.has(stemmed)) {
+        seen.add(stemmed); output.push(stemmed);
+      }
+    });
+    return output;
   }
 
   function extractPdfText(items) {
