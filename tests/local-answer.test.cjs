@@ -151,3 +151,67 @@ test('overview sampling preserves source-order endpoints when sentence lengths v
   assert.equal(result.origin,'source');
   assert.deepEqual(result.references.map(ref=>ref.page),[1,5,9]);
 });
+
+
+test('builds a detailed structured answer from multiple evidence roles and pages', () => {
+  const pages = [
+    {page:1,text:'A computer network is a group of interconnected devices that exchange data.'},
+    {page:2,text:'A network switch forwards frames to the destination device using its address.'},
+    {page:3,text:'A router selects a path for packets between different networks.'},
+    {page:4,text:'The data transfer process consists of sending, routing, and receiving packets.'},
+    {page:5,text:'Each packet carries addressing information so the network can deliver it.'},
+    {page:6,text:'For example, a home network connects computers, phones, and printers.'},
+    {page:7,text:'Because switches reduce unnecessary traffic, local communication can be more efficient.'},
+    {page:8,text:'However, network performance can decline when congestion increases.'}
+  ];
+  const result = A.answer({
+    documents:[{id:'computer-net',name:'Computer Networks.pdf',type:'pdf',pages}],
+    question:'اشرح كيف تعمل شبكات الحاسوب؟',
+    mode:'strict',
+    maxSentences:10
+  });
+  assert.equal(result.origin,'source');
+  assert.equal(result.intent,'how');
+  assert.ok(result.evidenceCount>=7,'only '+result.evidenceCount+' evidence sentences selected');
+  assert.ok(result.references.length>=6);
+  assert.match(result.text,/التعريف والفكرة الأساسية/);
+  assert.match(result.text,/آلية العمل والخطوات/);
+  assert.match(result.text,/أمثلة وتطبيقات/);
+  assert.match(result.text,/الأسباب والنتائج/);
+  assert.match(result.text,/القيود والنقاط التي يجب الانتباه لها/);
+  assert.match(result.text,/\[1\]/);
+  assert.equal(result.references[0].docName,'Computer Networks.pdf');
+  assert.ok(result.references.every(ref=>Number.isInteger(ref.page)&&ref.page>0));
+});
+
+test('organizes TCP and UDP evidence for comparison without inventing a winner', () => {
+  const docs=[{id:'protocols',name:'Transport.pdf',type:'pdf',pages:[
+    {page:4,text:'TCP provides reliable, ordered data delivery between communicating hosts.'},
+    {page:5,text:'UDP provides connectionless datagram delivery with low overhead.'},
+    {page:6,text:'TCP detects lost data and retransmits it when needed.'},
+    {page:7,text:'UDP does not guarantee delivery or order at the transport layer.'}
+  ]}];
+  const result=A.answer({documents:docs,question:'قارن بين TCP وUDP',mode:'strict',maxSentences:8});
+  assert.equal(result.origin,'source');
+  assert.equal(result.intent,'compare');
+  assert.match(result.text,/TCP وUDP/);
+  assert.ok(result.references.some(ref=>ref.page===4));
+  assert.ok(result.references.some(ref=>ref.page===5));
+  assert.ok(result.references.every(ref=>ref.docName==='Transport.pdf'));
+});
+
+test('question classification chooses different answer plans for why, how and define', () => {
+  assert.equal(A.classifyIntent('لماذا نستخدم قواعد البيانات؟'),'why');
+  assert.equal(A.classifyIntent('كيف يعمل التوجيه؟'),'how');
+  assert.equal(A.classifyIntent('عرّف نظام التشغيل'),'define');
+  assert.equal(A.classifyIntent('قارن بين TCP وUDP'),'compare');
+});
+
+test('does not invent an answer or citations when no source evidence exists', () => {
+  const result=A.answer({documents:[{id:'d',name:'Unrelated.pdf',type:'pdf',pages:[
+    {page:3,text:'Photosynthesis converts light energy into chemical energy.'}
+  ]}],question:'ما مكونات بروتوكول BGP؟',mode:'strict'});
+  assert.equal(result.origin,'miss');
+  assert.deepEqual(result.references,[]);
+  assert.match(result.text,/لم أجد أدلة كافية/);
+});
