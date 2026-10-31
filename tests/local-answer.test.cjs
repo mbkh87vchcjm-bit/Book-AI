@@ -88,10 +88,11 @@ test('answers an English question from an Arabic source using curated bilingual 
 });
 
 
+
 test('overview summary samples the beginning, middle and end of long references', () => {
   const pages = Array.from({length:125}, (_, index) => ({
     page:index + 1,
-    text:\`The chapter on topic \${index + 1} explains a useful scientific principle for learners.\`
+    text:'The chapter on topic ' + (index + 1) + ' explains a useful scientific principle for learners.'
   }));
   const result = A.answer({documents:[{id:'long',name:'LongBook.pdf',type:'pdf',pages}],question:'لخص المرجع',mode:'strict',maxSentences:5});
   assert.equal(result.origin,'source');
@@ -105,7 +106,7 @@ test('overview summary samples the beginning, middle and end of long references'
 
 test('overview summary represents multiple references instead of only the first book', () => {
   const docs = [
-    {id:'a',name:'A.pdf',type:'pdf',pages:Array.from({length:40},(_,i)=>({page:i+1,text:\`Document A chapter \${i+1} introduces a distinct scientific concept.\`}))},
+    {id:'a',name:'A.pdf',type:'pdf',pages:Array.from({length:40},(_,i)=>({page:i+1,text:'Document A chapter ' + (i+1) + ' introduces a distinct scientific concept.'}))},
     {id:'b',name:'B.pdf',type:'pdf',pages:[{page:7,text:'Document B explains an important and separate technical concept.'}]}
   ];
   const result = A.answer({documents:docs,question:'لخص المراجع',mode:'strict',maxSentences:5});
