@@ -23,23 +23,40 @@
       .replace(/[ؤئ]/g, 'ء').replace(/[٠-٩]/g, function (d) { return String(d.charCodeAt(0) - 0x660); });
   }
 
-  function stem(token) {
-    var t = token;
+  function stemVariants(token) {
+    var variants = [token], t = token;
     if (/^[\u0600-\u06ff]+$/.test(t)) {
       if (t.length > 5 && /^(وال|بال|كال|فال|لل)/.test(t)) t = t.replace(/^(وال|بال|كال|فال|لل)/, '');
       else if (t.length > 4 && /^ال/.test(t)) t = t.slice(2);
-      if (t.length > 5 && /^[وفب]/.test(t)) t = t.slice(1);
-      if (t.length > 5 && /(ات|ون|ين|ها|هم)$/.test(t)) t = t.slice(0, -2);
+      if (t && variants.indexOf(t) < 0) variants.push(t);
+      if (t.length > 4 && /(ات|ون|ين|ها|هم)$/.test(t)) {
+        var base = t.slice(0, -2);
+        if (base.length >= 3 && variants.indexOf(base) < 0) variants.push(base);
+      }
+      if (t.length > 3 && /ه$/.test(t)) {
+        var feminine = t.slice(0, -1);
+        if (feminine.length >= 3 && variants.indexOf(feminine) < 0) variants.push(feminine);
+      }
     } else if (/^[a-z]+$/.test(t) && t.length > 5) {
-      t = t.replace(/(ing|ed|es|s)$/, '');
+      var englishStem = t.replace(/(ing|ed|es|s)$/, '');
+      if (englishStem.length > 2 && englishStem !== t) variants.push(englishStem);
     }
-    return t;
+    return variants;
   }
 
   function words(text) {
-    var raw = normalize(text).match(/[a-z0-9\u0621-\u063a\u0641-\u064a\u066e-\u06d3\u06fa-\u06fc\u0750-\u077f\u08a0-\u08c9]+/g) || [];
-    return raw.filter(function (x) { return x.length > 1 && !STOP.has(x); })
-      .map(stem).filter(function (x) { return x.length > 1 && !STOP.has(x); });
+    var pattern = /c\+\+|c#|f#|tcp\/ip|udp\/ip|http\/2|wi-fi|802\.11[a-z0-9]*|[a-z0-9]+(?:[+#]|\/[a-z0-9]+|\.[a-z0-9]+)*|[\u0621-\u063a\u0641-\u064a\u066e-\u06d3\u06fa-\u06fc\u0750-\u077f\u08a0-\u08c9]+/g;
+    var raw = normalize(text).match(pattern) || [], output = [], seen = new Set();
+    raw.forEach(function (token) {
+      var technical = /[+#/.]/.test(token) || /^\d/.test(token);
+      if (!technical && (token.length <= 1 || STOP.has(token))) return;
+      stemVariants(token).forEach(function (variant) {
+        if (variant.length > 1 && (technical || !STOP.has(variant)) && !seen.has(variant)) {
+          seen.add(variant); output.push(variant);
+        }
+      });
+    });
+    return output;
   }
 
   function extractPdfText(items) {
@@ -99,7 +116,7 @@
     return /(?:لخص|تلخيص|ملخص|اهم النقاط|نظره عامه|فكره عامه|ملخصا|summari[sz]e|overview|key points|main points)/.test(q);
   }
 
-  function search(documents, query, limit, priorQuery, learningStore) {
+  function search(documents, query, limit, priorQuery, learningStore, semanticModel) {
     limit = Math.max(1, Math.min(50, Number(limit) || 3));
     var all = [];
     (documents || []).forEach(function (d) { all = all.concat(chunksForDocument(d)); });
@@ -159,7 +176,11 @@
 
     var normalizedQuery = normalize(query);
     var scored = all.map(function (chunk, i) {
-      var ts = tokenSets[i], docLen = docLengths[i], score = 0, matched = 0;
+      var ts = tokenSets[i], docLen = docLengths[i], score = 0, matched = 0, semanticScore = 0;
+      if (semanticModel && typeof semanticModel.similarity === 'function') {
+        try { semanticScore = Math.max(0, Math.min(1, Number(semanticModel.similarity(query, chunk.text)) || 0)); }
+        catch (_) { semanticScore = 0; }
+      }
       terms.forEach(function (term) {
         var tf = ts.reduce(function (n, token) { return n + (token === term ? 1 : 0); }, 0);
         if (tf) {
@@ -178,9 +199,9 @@
       }
 
       var required = terms.length >= 3 ? 1 : 1;
-      if (matched < required) score = 0;
-
-      return {chunk: chunk, score: score, matched: matched};
+      if (matched < required && semanticScore < 0.78) score = 0;
+      if (semanticScore >= 0.78) score += semanticScore * 1.8;
+      return {chunk: chunk, score: score, matched: matched, semanticScore: semanticScore};
     }).filter(function (x) { return x.score > 0; })
       .sort(function (a, b) { return b.score - a.score || b.matched - a.matched || a.chunk.offset - b.chunk.offset; });
 
@@ -191,7 +212,11 @@
       if (refs.length < limit && !pages.has(key)) { pages.add(key); refs.push(x.chunk); }
     });
 
-    return {references: refs, overview: false, queryWords: terms};
+    return {references: refs, overview: false, queryWords: terms,
+      semanticUsed: !!(semanticModel && scored.some(function (item) { return item.semanticScore >= 0.78; })),
+      semanticPages: scored.filter(function (item) { return item.semanticScore >= 0.78; }).map(function (item) {
+        return String(item.chunk.docId) + ':' + String(item.chunk.page);
+      })};
   }
 
   function shorten(value, max) {
