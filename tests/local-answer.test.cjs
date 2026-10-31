@@ -65,3 +65,51 @@ test('recognizes an answer problem from the source instead of guessing the exerc
   assert.equal(source.references[0].page,2);
   assert.match(source.references[0].excerpt,/الأرض/);
 });
+
+
+test('answers an Arabic question from an English source using curated bilingual retrieval', () => {
+  const englishDocs = [{id:'ai',name:'Artificial-Intelligence.pdf',type:'pdf',pages:[
+    {page:8,text:'Artificial intelligence systems can learn patterns from data.'}
+  ]}];
+  const result = A.answer({documents:englishDocs,question:'ما هو الذكاء الاصطناعي؟',mode:'strict'});
+  assert.equal(result.origin,'source');
+  assert.equal(result.references[0].page,8);
+  assert.match(result.references[0].excerpt,/Artificial intelligence/);
+});
+
+test('answers an English question from an Arabic source using curated bilingual retrieval', () => {
+  const arabicDocs = [{id:'nn',name:'Networks.pdf',type:'pdf',pages:[
+    {page:5,text:'الشبكة العصبية نظام حسابي يتكون من وحدات مترابطة.'}
+  ]}];
+  const result = A.answer({documents:arabicDocs,question:'What is a neural network?',mode:'strict'});
+  assert.equal(result.origin,'source');
+  assert.equal(result.references[0].page,5);
+  assert.match(result.references[0].excerpt,/الشبكة العصبية/);
+});
+
+
+
+test('overview summary samples the beginning, middle and end of long references', () => {
+  const pages = Array.from({length:125}, (_, index) => ({
+    page:index + 1,
+    text:'The chapter on topic ' + (index + 1) + ' explains a useful scientific principle for learners.'
+  }));
+  const result = A.answer({documents:[{id:'long',name:'LongBook.pdf',type:'pdf',pages}],question:'لخص المرجع',mode:'strict',maxSentences:5});
+  assert.equal(result.origin,'source');
+  assert.equal(result.references.length,5);
+  const pageNumbers = result.references.map(ref=>ref.page);
+  assert.equal(pageNumbers[0],1);
+  assert.equal(pageNumbers[4],125);
+  assert.ok(pageNumbers[2] >= 55 && pageNumbers[2] <= 70);
+  assert.equal(new Set(pageNumbers).size,5);
+});
+
+test('overview summary represents multiple references instead of only the first book', () => {
+  const docs = [
+    {id:'a',name:'A.pdf',type:'pdf',pages:Array.from({length:40},(_,i)=>({page:i+1,text:'Document A chapter ' + (i+1) + ' introduces a distinct scientific concept.'}))},
+    {id:'b',name:'B.pdf',type:'pdf',pages:[{page:7,text:'Document B explains an important and separate technical concept.'}]}
+  ];
+  const result = A.answer({documents:docs,question:'لخص المراجع',mode:'strict',maxSentences:5});
+  assert.equal(result.origin,'source');
+  assert.ok(result.references.some(ref=>ref.docId==='b'));
+});

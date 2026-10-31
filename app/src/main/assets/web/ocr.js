@@ -83,9 +83,16 @@
     // Similar but different words are intentionally not presented as certain.
     // A low distance still does not guarantee correctness, especially for words
     // absent from the dictionary. Prefer a visible unknown over a weak match.
-    if (bestId < 0 || best > 0.075 || (next - best < 0.006 && best > 0.015)) return {text: '□', rtl: false, uncertain: true, score: best};
+    var margin = next - best;
+    if (bestId < 0 || best > 0.075 || (margin < 0.006 && best > 0.015)) {
+      // Expose only the nearest dictionary candidate for diagnostics. The
+      // recognizer still returns a visible unknown marker and never emits this
+      // candidate as recognized text unless it passes the confidence checks.
+      var nearest = bestId >= 0 ? wordFor(table, bestId).text : '';
+      return {text: '□', rtl: false, uncertain: true, score: best, candidate: nearest, margin: margin, nextScore: next};
+    }
     var result = wordFor(table, bestId);
-    result.uncertain = !result.text; result.score = best;
+    result.uncertain = !result.text; result.score = best; result.margin = margin; result.nextScore = next;
     if (!result.text) result.text = '□';
     return result;
   }
