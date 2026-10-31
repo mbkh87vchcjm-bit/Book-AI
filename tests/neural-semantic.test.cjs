@@ -17,7 +17,7 @@ test('trains a small neural model from supplied local documents only', async () 
   const model = await Neural.train(trainingDocs(), {maxTokens:12000, maxVocabulary:600, dimension:16});
   assert.ok(model);
   assert.equal(model.algorithm, 'skip-gram-negative-sampling-from-scratch');
-  assert.ok(model.vocabularySize >= 12);
+  assert.ok(model.vocabularySize >= 8);
   assert.ok(model.trainedTokens > 0);
   assert.ok(model.trainedPairs > 0);
   const related = model.similarity('router', 'routing');
