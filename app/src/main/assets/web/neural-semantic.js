@@ -16,7 +16,7 @@
     maxVocabulary: 1600, maxTokens: 24000, minCount: 2, maxChars: 360000};
 
   function tokenize(text) {
-    return E && E.words ? E.words(String(text || '')) :
+    return E && E.baseWords ? E.baseWords(String(text || '')) :
       (String(text || '').toLowerCase().match(/[a-z0-9]+|[\u0600-\u06ff]+/g) || []);
   }
 
