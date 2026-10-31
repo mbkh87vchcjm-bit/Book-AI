@@ -147,7 +147,7 @@
     {phrases: ['بروتوكول الانترنت', 'internet protocol'], terms: ['بروتوكول الانترنت', 'internet protocol']},
     {phrases: ['تبديل الشبكات', 'تبديل الشبكة', 'network switching'], terms: ['تبديل الشبكات', 'network switching']},
     {phrases: ['التوجيه', 'توجيه الشبكات', 'network routing', 'routing'], terms: ['توجيه الشبكات', 'network routing', 'routing']},
-    {phrases: ['امن المعلومات', 'أمن المعلومات', 'information security', 'cybersecurity', 'cyber security'], terms: ['امن المعلومات', 'information security', 'cybersecurity']},
+    {phrases: ['امن المعلومات', 'أمن المعلومات', 'بأمن المعلومات', 'لأمن المعلومات', 'information security', 'cybersecurity', 'cyber security'], terms: ['امن المعلومات', 'information security', 'cybersecurity']},
     {phrases: ['التشفير', 'تشفير البيانات', 'encryption', 'cryptography'], terms: ['تشفير البيانات', 'encryption', 'cryptography']},
     {phrases: ['عنوان ip', 'عناوين ip', 'ip address', 'ip addressing'], terms: ['عنوان ip', 'ip address', 'ip addressing']},
     {phrases: ['نموذج العميل والخادم', 'عميل خادم', 'client server', 'client-server'], terms: ['عميل خادم', 'client server']},
@@ -159,6 +159,10 @@
   function expandQueryTerms(query, baseTerms) {
     var normalized = normalize(query).replace(/[^a-z0-9\u0621-\u063a\u0641-\u064a]+/g, ' ').trim();
     var terms = new Set(baseTerms || words(query));
+    // A standalone short technical identifier (IP, TCP, DNS) is an exact
+    // lookup, not permission to expand every longer phrase containing it.
+    // Full Arabic/English phrases still activate their curated aliases.
+    if (baseTerms && baseTerms.length === 1 && /^[a-z0-9]{2,4}$/.test(baseTerms[0])) return Array.from(terms);
     BILINGUAL_ALIASES.forEach(function (entry) {
       var matched = entry.phrases.some(function (phrase) {
         var normalizedPhrase = normalize(phrase).replace(/[^a-z0-9\u0621-\u063a\u0641-\u064a]+/g, ' ').trim();
