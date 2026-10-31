@@ -141,3 +141,12 @@ test('does not confuse TCP/IP with the standalone TCP acronym expansion', () => 
   assert.equal(result.references.length, 1);
   assert.deepEqual(result.queryWords, ['tcp/ip']);
 });
+
+
+test('preserves single-digit numeric tokens for versioned and numbered technical references', () => {
+  assert.ok(E.words('page 1 and 5G').includes('1'));
+  const doc = {id:'num',name:'standards.pdf',type:'pdf',pages:[
+    {page:2,text:'The standard is version 1 and applies to this system.'}
+  ]};
+  assert.equal(E.search([doc],'version 1').references[0].page,2);
+});
