@@ -129,7 +129,7 @@
       vocabulary = Object.keys(counts).sort(function (a, b) { return counts[b] - counts[a] || a.localeCompare(b); })
         .slice(0, options.maxVocabulary);
     }
-    if (vocabulary.length < 12) return null;
+    if (vocabulary.length < 8) return null;
 
     var wordIndex = new Map();
     vocabulary.forEach(function (word, i) { wordIndex.set(word, i); });
@@ -218,7 +218,7 @@
     if (!data || data.version !== VERSION || data.algorithm !== 'skip-gram-negative-sampling-from-scratch' ||
         !Array.isArray(data.vocabulary) || !Array.isArray(data.vectors)) return null;
     var dim = Number(data.dimension), vocab = data.vocabulary;
-    if (!Number.isInteger(dim) || dim < 8 || dim > 48 || vocab.length < 12 || vocab.length > 2500 ||
+    if (!Number.isInteger(dim) || dim < 8 || dim > 48 || vocab.length < 8 || vocab.length > 2500 ||
         data.vectors.length !== vocab.length * dim || data.vectors.length > 120000) return null;
     var seen = new Set();
     for (var i = 0; i < vocab.length; i++) {
