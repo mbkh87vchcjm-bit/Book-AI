@@ -116,10 +116,54 @@
   }
 
   function sentences(text) {
-    // Keep the actual characters of each selected sentence for source checking.
-    return (String(text || '').match(/[^.!؟\n]+[.!؟]?/g) || [])
-      .map(function (s) { return s.trim(); }).filter(function (s) { return s.length >= 8 && E.words(s).length; });
+    return (String(text || '').match(/[^.!؟?\n]+[.!؟?]?/g) || [])
+      .map(function (s) { return s.trim(); })
+      .filter(function (s) { return s.length >= 12 && E.words(s).length; });
   }
+
+  function classifyIntent(question) {
+    var q = E.normalize(question);
+    if (/(?:قارن|مقارنه|الفرق بين|ما الفرق|compare|comparison|difference between|versus|\bvs\b)/.test(q)) return 'compare';
+    if (/(?:لماذا|ليش|ما سبب|سبب|اهميه|اهمية|why|reason|cause)/.test(q)) return 'why';
+    if (/(?:كيف|ما طريقه|طريقه عمل|خطوات|اليه العمل|how does|how do|how to|steps|process)/.test(q)) return 'how';
+    if (/(?:عرف|عرّف|تعريف|ما هو|ماهي|ما هى|ماذا يعني|define|definition|what is|what are)/.test(q)) return 'define';
+    if (/(?:لخص|تلخيص|ملخص|summari[sz]e|overview|key points)/.test(q)) return 'summary';
+    return 'explain';
+  }
+
+  function sentenceRole(text) {
+    var q = E.normalize(text);
+    if (/(?:يعرف بانه|تعرف بانها|هو عباره عن|هي عباره عن|هو نظام|هي نظام|is defined as|refers to|is a|are a|is an|are an)/.test(q)) return 'definition';
+    if (/(?:بسبب|لان|لانه|نتيجه ل|يؤدي الى|ينتج عن|because|due to|as a result|therefore|leads to)/.test(q)) return 'cause';
+    if (/(?:اولا|ثانيا|ثم|بعد ذلك|خطوه|مرحله|يتكون من|تتكون من|يمر عبر|first|second|then|next|step|stage|consists of|is composed of)/.test(q)) return 'process';
+    if (/(?:وظيفته|وظيفتها|يستخدم في|تستخدم في|يتيح|يسمح|يمكن من|يعمل على|provides|enables|allows|is used to|used for|functions? as)/.test(q)) return 'function';
+    if (/(?:مثلا|على سبيل المثال|مثل|من امثله|for example|such as|e\\.g\\.)/.test(q)) return 'example';
+    if (/(?:مزايا|ميزات|فوائد|من فوائد|يساعد على|advantages|benefits|strengths|improves)/.test(q)) return 'advantage';
+    if (/(?:عيوب|قيود|محدود|لا يدعم|من سلبيات|limitations|drawbacks|disadvantages|however|but|cannot)/.test(q)) return 'limitation';
+    if (/(?:بينما|على خلاف|بالمقابل|بخلاف|مقارنه|يختلف عن|whereas|unlike|in contrast|compared with|compared to)/.test(q)) return 'comparison';
+    return 'detail';
+  }
+
+  var ROLE_LABELS = {
+    definition: 'التعريف والفكرة الأساسية',
+    function: 'الوظيفة والاستخدام',
+    process: 'آلية العمل والخطوات',
+    cause: 'الأسباب والنتائج',
+    example: 'أمثلة وتطبيقات',
+    advantage: 'الفوائد والمزايا',
+    limitation: 'القيود والنقاط التي يجب الانتباه لها',
+    comparison: 'المقارنة والاختلاف',
+    detail: 'تفاصيل مرتبطة بالسؤال'
+  };
+
+  function rolePriority(intent) {
+    if (intent === 'define') return ['definition', 'function', 'detail', 'process', 'example', 'cause', 'advantage', 'limitation'];
+    if (intent === 'why') return ['cause', 'function', 'detail', 'example', 'limitation', 'definition', 'process', 'advantage'];
+    if (intent === 'how') return ['process', 'function', 'detail', 'example', 'definition', 'cause', 'limitation', 'advantage'];
+    if (intent === 'compare') return ['comparison', 'definition', 'function', 'detail', 'advantage', 'limitation', 'process', 'example'];
+    return ['definition', 'function', 'process', 'cause', 'example', 'advantage', 'limitation', 'comparison', 'detail'];
+  }
+
   function sampleOverviewSources(documents, maxPages) {
     maxPages = maxPages || 120;
     var groups = (documents || []).map(function (doc, docIndex) {
@@ -134,9 +178,6 @@
         return out;
       }, []);
     }
-
-    // Give every document a representative sample before distributing the
-    // remaining sample budget in proportion to its non-empty page count.
     var quotas = groups.map(function () { return 1; });
     if (groups.length > maxPages) {
       quotas = groups.map(function () { return 0; });
@@ -162,7 +203,6 @@
         if (!progressed) break;
       }
     }
-
     var sampled = [];
     groups.forEach(function (group, index) {
       var quota = quotas[index];
@@ -176,80 +216,158 @@
     return sampled;
   }
 
-  function selectSentences(documents, result, question, limit) {
-    var q = new Set(result.queryWords && result.queryWords.length ? result.queryWords : E.words(question)), items = [];
+  function collectEvidence(documents, result, question, limit, semanticModel, intent) {
+    var queryTerms = Array.from(new Set(result.queryWords && result.queryWords.length ? result.queryWords : E.words(question)));
+    var q = new Set(queryTerms), items = [];
     var sources = result.overview ? sampleOverviewSources(documents, 120) : result.references;
     sources.forEach(function (ref, pageOrder) {
       sentences(ref.text).slice(0, 160).forEach(function (text, index) {
-        var terms = E.words(text), matched = new Set(terms.filter(function (w) { return q.has(w); }));
+        var terms = E.words(text), matched = new Set(terms.filter(function (word) { return q.has(word); }));
+        var semantic = 0;
+        if (semanticModel && typeof semanticModel.similarity === 'function') {
+          try { semantic = Math.max(0, Math.min(1, Number(semanticModel.similarity(question, text)) || 0)); } catch (_) {}
+        }
+        var role = sentenceRole(text);
         var contentTermCount = terms.filter(function (term) { return !/^\d+$/.test(term); }).length;
-        var score = result.overview ? Math.min(contentTermCount, 22) / 22 + 1 / (3 + index) : matched.size * 4 + Math.min(terms.length, 20) / 50;
-        if (!result.overview && q.size && !matched.size) return;
-        items.push({score: score, order: pageOrder * 1000 + index, text: text, ref: ref});
+        var score;
+        if (result.overview) {
+          score = Math.min(contentTermCount, 24) / 24 + 1 / (4 + index);
+        } else {
+          if (!matched.size && semantic < 0.78) return;
+          score = matched.size * 3.6 + matched.size / Math.max(1, q.size) * 2.2 + semantic * 1.1;
+        }
+        if (intent === 'summary') score += 0.4;
+        items.push({score: score, role: role, order: pageOrder * 1000 + index,
+          text: text, ref: ref, semantic: semantic, matched: matched.size});
       });
     });
     items.sort(function (a, b) { return b.score - a.score || a.order - b.order; });
-    var seen = new Set(), chosen = [], seenPages = new Set();
-    if (result.overview) {
-      // Keep the best sentence per page, then sample pages evenly so a short
-      // summary represents the beginning, middle, and end of each source set.
-      var bestPerPage = [];
-      items.forEach(function (item) {
-        var pageKey = String(item.ref.docId) + ':' + String(item.ref.page);
-        if (!seenPages.has(pageKey)) { bestPerPage.push(item); seenPages.add(pageKey); }
-      });
-      // Sort by source order before even sampling. The candidate list is
-      // score-ranked above; sampling that order can omit the beginning/end
-      // whenever sentence lengths differ between pages.
-      bestPerPage.sort(function (a, b) { return a.order - b.order; });
-      if (bestPerPage.length <= limit) chosen = bestPerPage;
-      else for (var sample = 0; sample < limit; sample++) {
-        var selectedIndex = Math.round(sample * (bestPerPage.length - 1) / Math.max(1, limit - 1));
-        chosen.push(bestPerPage[selectedIndex]);
-      }
-      chosen.sort(function (a, b) { return a.order - b.order; });
-      return chosen;
+    var priority = rolePriority(intent), chosen = [], seenText = new Set(), pageCounts = Object.create(null);
+    function add(item) {
+      var normalized = E.normalize(item.text);
+      var pageKey = String(item.ref.docId) + ':' + String(item.ref.page);
+      if (chosen.length >= limit || seenText.has(normalized) || (pageCounts[pageKey] || 0) >= 2) return false;
+      chosen.push(item); seenText.add(normalized); pageCounts[pageKey] = (pageCounts[pageKey] || 0) + 1;
+      return true;
     }
-    items.forEach(function (item) {
-      var key = E.normalize(item.text);
-      if (chosen.length < limit && !seen.has(key)) { chosen.push(item); seen.add(key); }
+    // Cover different explanatory roles before filling remaining slots by rank.
+    priority.forEach(function (role) {
+      var candidate = items.find(function (item) { return item.role === role && !seenText.has(E.normalize(item.text)); });
+      if (candidate) add(candidate);
     });
+    items.forEach(function (item) { add(item); });
+    if (result.overview) {
+      chosen.sort(function (a, b) { return a.order - b.order; });
+      if (chosen.length > limit) chosen = chosen.slice(0, limit);
+      if (chosen.length > 2) {
+        var spread = [];
+        for (var pick = 0; pick < limit; pick++) {
+          var chosenIndex = Math.round(pick * (chosen.length - 1) / Math.max(1, limit - 1));
+          if (chosen[chosenIndex] && spread.indexOf(chosen[chosenIndex]) < 0) spread.push(chosen[chosenIndex]);
+        }
+        chosen = spread;
+      }
+    }
     return chosen;
+  }
+
+  function buildAnswerText(selected, question, intent, limit) {
+    var refs = [], pageIndex = Object.create(null), sections = Object.create(null);
+    selected.forEach(function (item) {
+      var key = String(item.ref.docId) + ':' + String(item.ref.page);
+      if (!pageIndex[key]) {
+        var reference = {docId: item.ref.docId, docName: item.ref.docName,
+          page: item.ref.page, type: item.ref.type, excerpt: item.text, ocr: !!item.ref.ocr};
+        refs.push(reference);
+        pageIndex[key] = refs.length;
+      } else {
+        var ref = refs[pageIndex[key] - 1];
+        if (ref.excerpt.indexOf(item.text) < 0) ref.excerpt += ' ' + item.text;
+      }
+      if (!sections[item.role]) sections[item.role] = [];
+      sections[item.role].push({text: item.text, refNumber: pageIndex[key]});
+    });
+    var lines = [];
+    var sourceCount = refs.length;
+    var opening = intent === 'summary'
+      ? 'ملخص منظم من مقتطفات موزعة على المراجع والصفحات المتاحة:'
+      : 'إجابة منظمة مبنية على النصوص التي عُثر عليها في مراجعك:';
+    lines.push(opening);
+    var priority = rolePriority(intent), used = new Set();
+    priority.forEach(function (role) {
+      if (!sections[role] || !sections[role].length) return;
+      used.add(role);
+      lines.push('');
+      lines.push('**' + (ROLE_LABELS[role] || 'تفاصيل') + '**');
+      sections[role].forEach(function (evidence) {
+        lines.push('• «' + E.shorten(evidence.text, 360) + '» [' + evidence.refNumber + ']');
+      });
+    });
+    Object.keys(sections).forEach(function (role) {
+      if (used.has(role)) return;
+      lines.push('');
+      lines.push('**' + (ROLE_LABELS[role] || 'تفاصيل مرتبطة') + '**');
+      sections[role].forEach(function (evidence) {
+        lines.push('• «' + E.shorten(evidence.text, 360) + '» [' + evidence.refNumber + ']');
+      });
+    });
+    lines.push('');
+    if (selected.length < limit) {
+      lines.push('**حدود ما وجدته:** المعلومات المتاحة في النصوص المضافة لا تغطي جميع جوانب السؤال. لم أُكمل الأجزاء الناقصة بمعلومات غير موثقة.');
+    } else {
+      lines.push('**طريقة قراءة الإجابة:** رتّبت المقاطع بحسب دورها في الشرح. علامات [1] وما بعدها تشير إلى بطاقات المراجع وصفحاتها أدناه.');
+    }
+    if (intent === 'compare') {
+      var labels = String(question || '').match(/\b[A-Z][A-Z0-9+/#.-]{1,9}\b/g) || [];
+      labels = Array.from(new Set(labels.map(function (label) { return label.toUpperCase(); }))).slice(0, 2);
+      if (labels.length === 2) {
+        var sideEvidence = labels.map(function (label) {
+          var terms = new Set(E.words(label));
+          return selected.filter(function (item) { return E.words(item.text).some(function (term) { return terms.has(term); }); });
+        });
+        if (sideEvidence[0].length && sideEvidence[1].length) {
+          lines.splice(1, 0, '', '**نقطتا المقارنة المطلوبتان: ' + labels[0] + ' و' + labels[1] + '**',
+            'توجد أدلة منفصلة عن الطرفين ضمن المراجع. لا أقرر أيهما أفضل إلا إذا ورد معيار المقارنة ونتيجته صراحة في النصوص.');
+        }
+      }
+    }
+    return {text: lines.join('\n'), references: refs};
   }
 
   function answer(options) {
     options = options || {};
     var question = String(options.question || '').trim(), docs = options.documents || [];
-    var strict = options.mode === 'strict', limit = Math.max(1, Math.min(5, Number(options.maxSentences) || 3));
+    var strict = options.mode === 'strict';
+    var limit = Math.max(5, Math.min(12, Number(options.maxSentences) || 8));
     if (!strict && options.allowMath !== false) {
       var calculation = calculate(question);
       if (calculation) return calculation.error
         ? {text: 'تعذّر الحساب: ' + calculation.error + '. يدعم المحرك العمليات الأساسية والمعادلات الخطية البسيطة فقط.', origin: 'calculation', references: []}
         : {text: calculation.text, origin: 'calculation', references: []};
     }
-    var found = E.search(docs, question, 5, options.priorQuestion || '', options.termWeights || null);
-    var selected = selectSentences(docs, found, question, limit);
+    var intent = classifyIntent(question);
+    var semanticModel = options.semanticModel || null;
+    var found = E.search(docs, question, 18, options.priorQuestion || '', options.termWeights || null, semanticModel);
+    var selected = collectEvidence(docs, found, question, limit, semanticModel, intent);
     if (!selected.length && Knowledge && Array.isArray(options.knowledgeFacts)) {
       var knowledgeHits = Knowledge.search(options.knowledgeFacts, question, limit);
       if (knowledgeHits.length) {
-        var knowledgeRefs = knowledgeHits.map(function (hit) {
-          var fact = hit.fact;
-          return {docId: fact.docId, docName: fact.docName, page: fact.page, type: fact.type || 'pdf', excerpt: fact.excerpt, ocr: false};
+        selected = knowledgeHits.map(function (hit) {
+          return {text: hit.fact.excerpt, role: sentenceRole(hit.fact.excerpt),
+            ref: {docId: hit.fact.docId, docName: hit.fact.docName, page: hit.fact.page,
+              type: hit.fact.type || 'pdf', ocr: false}};
         });
-        var body = knowledgeRefs.map(function (ref, index) { return '[' + (index + 1) + '] «' + ref.excerpt + '»'; }).join('\n\n');
-        var terms = found.queryWords && found.queryWords.length ? found.queryWords : E.words(question);
-        return {text: 'من حقائق راجعتها واعتمدتها في قاعدة المعرفة المحلية:\n\n' + body + '\n\nكل مقتطف مرتبط بمرجعه وصفحته الأصلية.',
-          origin: 'source', references: knowledgeRefs, queryTerms: terms.slice(0, 30)};
       }
     }
     if (!selected.length) return {text: strict && !docs.length
       ? 'أضف مرجعًا أولًا؛ وضع المصادر فقط لا يجيب من خارجها.'
-      : 'لم أجد نصًا مناسبًا في مراجعك. لا أملك معرفة عامة مولّدة؛ جرّب صياغة أخرى أو أضف مصدرًا. يمكنني أيضًا حساب تعبير أو حل معادلة خطية بسيطة عند السماح بالحساب.', origin: 'miss', references: []};
-    var refs = selected.map(function (item) { return {docId: item.ref.docId, docName: item.ref.docName,
-      page: item.ref.page, type: item.ref.type, excerpt: E.shorten(item.text, 600), ocr: !!item.ref.ocr}; });
-    var opening = found.overview ? 'ملخص اقتباسي من جمل مختارة (قد لا يشمل المرجع كاملًا):' : 'وجدت في المراجع جملًا قد تساعد في الإجابة:';
-    var body = refs.map(function (r, i) { return '[' + (i + 1) + '] «' + r.excerpt + '»'; }).join('\n\n');
-    return {text: opening + '\n\n' + body + '\n\nهذه جمل منتقاة آليًا، وليست فهمًا أو حلًا مضمونًا. راجع الصفحة الأصلية.', origin: 'source', references: refs, queryTerms: (found.queryWords || []).slice(0, 30)};
+      : 'لم أجد أدلة كافية في مراجعك للإجابة عن هذا السؤال. جرّب صياغة أدق أو أضف مرجعًا يتناول الموضوع. لن أختلق إجابة أو مصدرًا غير موجود.', origin: 'miss', references: []};
+    var built = buildAnswerText(selected, question, intent, limit);
+    var queryTerms = (found.queryWords || E.words(question)).slice(0, 30);
+    return {text: built.text, origin: 'source', references: built.references,
+      queryTerms: queryTerms, intent: intent, semanticUsed: !!found.semanticUsed,
+      evidenceCount: selected.length};
   }
-  return {answer: answer, calculate: calculate, extractExpression: extractExpression, parseLinear: parseLinear, sentences: sentences};
+  return {answer: answer, calculate: calculate, extractExpression: extractExpression, parseLinear: parseLinear,
+    sentences: sentences, classifyIntent: classifyIntent, sentenceRole: sentenceRole};
 }));
