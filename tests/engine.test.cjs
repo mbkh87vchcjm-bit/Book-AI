@@ -109,3 +109,35 @@ test('preserves programming languages and network identifiers as searchable toke
   assert.equal(E.search([doc], 'C++').references[0].page, 4);
   assert.equal(E.search([doc], 'TCP/IP').references[0].page, 4);
 });
+
+
+test('uses BM25 term frequency and document-length normalization', () => {
+  const docs = [{id: 'a', name: 'a.txt', type: 'text', pages: [
+    {page: 1, text: 'network network network network network'}
+  ]}, {id: 'b', name: 'b.txt', type: 'text', pages: [
+    {page: 1, text: 'network with several other technical words about computer systems'}
+  ]}];
+  const result = E.search(docs, 'network', 2);
+  assert.equal(result.references.length, 2);
+  assert.equal(result.references[0].docId, 'a');
+});
+
+test('expands selected Arabic technical phrases to their English equivalents', () => {
+  const english = {id: 'ai-en', name: 'ai.pdf', type: 'pdf', pages: [
+    {page: 8, text: 'Artificial intelligence systems can learn patterns from data.'}
+  ]};
+  const result = E.search([english], 'ما هو الذكاء الاصطناعي؟');
+  assert.equal(result.references.length, 1);
+  assert.equal(result.references[0].page, 8);
+  assert.ok(result.queryWords.includes('artificial'));
+  assert.ok(result.queryWords.includes('intelligence'));
+});
+
+test('does not confuse TCP/IP with the standalone TCP acronym expansion', () => {
+  const doc = {id: 'net', name: 'net.txt', type: 'text', pages: [
+    {page: 6, text: 'TCP/IP is a protocol suite for internetwork communication.'}
+  ]};
+  const result = E.search([doc], 'TCP/IP');
+  assert.equal(result.references.length, 1);
+  assert.deepEqual(result.queryWords, ['tcp/ip']);
+});
