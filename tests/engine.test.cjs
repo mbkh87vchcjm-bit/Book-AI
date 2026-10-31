@@ -164,3 +164,45 @@ test('bounded local term feedback changes BM25 ordering without exceeding limits
   const extreme = E.search(docs,'security network',2,'',{security:99,network:-20});
   assert.equal(extreme.references[0].docId,'security');
 });
+
+
+
+test('expands common IT curriculum terms across Arabic and English sources', () => {
+  const cases = [
+    {
+      question: 'اشرح تبديل الشبكات',
+      text: 'Network switching is the process used to move data through a communication network.',
+      page: 11
+    },
+    {
+      question: 'ما هو التوجيه في الشبكات؟',
+      text: 'Routing selects paths for packets to travel between different networks.',
+      page: 12
+    },
+    {
+      question: 'ما المقصود بأمن المعلومات؟',
+      text: 'Information security protects information and systems from unauthorized access.',
+      page: 13
+    },
+    {
+      question: 'اشرح تشفير البيانات',
+      text: 'Encryption transforms readable data into ciphertext using a cryptographic method.',
+      page: 14
+    }
+  ];
+  for (const item of cases) {
+    const doc = {id:'it-'+item.page,name:'IT-terms.pdf',type:'pdf',pages:[{page:item.page,text:item.text}]};
+    const result = E.search([doc],item.question);
+    assert.equal(result.references.length,1,item.question);
+    assert.equal(result.references[0].page,item.page,item.question);
+  }
+});
+
+test('does not expand standalone TCP into TCP/IP or confuse distinct identifiers', () => {
+  const tcpIp = {id:'tcpip',name:'tcpip.txt',type:'text',pages:[{page:1,text:'TCP/IP is a protocol suite used for communication.'}]};
+  const tcpOnly = {id:'tcp',name:'tcp.txt',type:'text',pages:[{page:2,text:'TCP provides reliable transport between hosts.'}]};
+  const ipOnly = {id:'ip',name:'ip.txt',type:'text',pages:[{page:3,text:'IP provides logical addressing for network devices.'}]};
+  assert.equal(E.search([tcpIp],'TCP/IP').references[0].docId,'tcpip');
+  assert.equal(E.search([tcpOnly],'TCP').references[0].docId,'tcp');
+  assert.equal(E.search([ipOnly],'IP').references[0].docId,'ip');
+});
