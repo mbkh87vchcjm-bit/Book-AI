@@ -135,6 +135,10 @@
   // Curated bilingual aliases. These are lexical equivalences, not semantic
   // embeddings; each mapping is deliberately explicit and testable.
   var BILINGUAL_ALIASES = [
+    {phrases: ['كيف يعمل', 'كيف تعمل', 'كيفية عمل', 'آلية العمل', 'how does', 'how do', 'how to'], terms: ['آلية', 'عمل', 'خطوات', 'عملية', 'process', 'mechanism', 'steps', 'method', 'function']},
+    {phrases: ['لماذا', 'ما سبب', 'ما الأسباب', 'why', 'what causes', 'reason for'], terms: ['سبب', 'أسباب', 'نتيجة', 'تأثير', 'cause', 'reason', 'effect', 'because', 'purpose']},
+    {phrases: ['قارن بين', 'ما الفرق بين', 'الفرق بين', 'compare', 'difference between'], terms: ['مقارنة', 'اختلاف', 'مزايا', 'عيوب', 'comparison', 'difference', 'whereas', 'unlike']},
+    {phrases: ['عرف', 'عرّف', 'ما تعريف', 'ما المقصود', 'define', 'definition of'], terms: ['تعريف', 'يعني', 'مفهوم', 'definition', 'defined', 'means', 'refers']},
     {phrases: ['الذكاء الاصطناعي', 'ذكاء اصطناعي', 'artificial intelligence'], terms: ['ذكاء اصطناعي', 'artificial intelligence']},
     {phrases: ['الشبكة العصبية', 'الشبكات العصبية', 'neural network', 'neural networks'], terms: ['شبكة عصبية', 'neural network']},
     {phrases: ['تعلم الالة', 'التعلم الالي', 'machine learning'], terms: ['تعلم الالة', 'machine learning']},
