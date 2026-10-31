@@ -67,11 +67,11 @@ jobs:
           java-version: '17'
       - name: Set up Android SDK
         uses: android-actions/setup-android@v3
+        with:
+          packages: ''
       - name: Install Android build packages
         run: sdkmanager "platforms;android-34" "build-tools;34.0.0"
       - name: Build and verify APK
-        env:
-          ANDROID_HOME: ${{ env.ANDROID_HOME }}
         run: |
           chmod +x scripts/build-apk.sh
           ./scripts/build-apk.sh
