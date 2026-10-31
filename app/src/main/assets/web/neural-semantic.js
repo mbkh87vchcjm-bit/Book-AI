@@ -122,6 +122,13 @@
     var vocabulary = Object.keys(counts).filter(function (word) { return counts[word] >= options.minCount; });
     vocabulary.sort(function (a, b) { return counts[b] - counts[a] || a.localeCompare(b); });
     vocabulary = vocabulary.slice(0, options.maxVocabulary);
+    // Small but usable notebooks may have fewer than 12 repeated words.
+    // Only in that case, admit single-occurrence terms to reach the minimum
+    // vocabulary size; the hard token threshold above still rejects tiny files.
+    if (vocabulary.length < 12) {
+      vocabulary = Object.keys(counts).sort(function (a, b) { return counts[b] - counts[a] || a.localeCompare(b); })
+        .slice(0, options.maxVocabulary);
+    }
     if (vocabulary.length < 12) return null;
 
     var wordIndex = new Map();
