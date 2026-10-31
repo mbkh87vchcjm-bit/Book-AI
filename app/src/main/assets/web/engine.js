@@ -146,7 +146,6 @@
     {phrases: ['بروتوكول التحكم بالنقل', 'بروتوكول التحكم في النقل', 'transmission control protocol', 'tcp'], terms: ['بروتوكول التحكم بالنقل', 'transmission control protocol', 'tcp']},
     {phrases: ['بروتوكول الانترنت', 'internet protocol'], terms: ['بروتوكول الانترنت', 'internet protocol']},
     {phrases: ['تبديل الشبكات', 'تبديل الشبكة', 'network switching'], terms: ['تبديل الشبكات', 'network switching']},
-    {phrases: ['تبديل الحزم', 'packet switching'], terms: ['تبديل الحزم', 'packet switching']},
     {phrases: ['التوجيه', 'توجيه الشبكات', 'network routing', 'routing'], terms: ['توجيه الشبكات', 'network routing', 'routing']},
     {phrases: ['امن المعلومات', 'أمن المعلومات', 'information security', 'cybersecurity', 'cyber security'], terms: ['امن المعلومات', 'information security', 'cybersecurity']},
     {phrases: ['التشفير', 'تشفير البيانات', 'encryption', 'cryptography'], terms: ['تشفير البيانات', 'encryption', 'cryptography']},
