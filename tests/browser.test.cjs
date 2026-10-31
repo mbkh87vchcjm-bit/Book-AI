@@ -161,7 +161,8 @@ async function createScannedPdf(page) {
       for (const [font, size, result] of results) {
         const actual = result.text.split(' ');
         assert.equal(actual.length, expected.length, `${font} ${size}: word count`);
-        assert.ok(actual.filter((w, i) => w === expected[i]).length >= 6, `${font} ${size}: minimum correct words`);
+        const correctWords = actual.filter((w, i) => w === expected[i]).length;
+        assert.ok(correctWords >= 6, `${font} ${size}: expected >=6 correct words, got ${correctWords}/${expected.length}; OCR=${JSON.stringify(result.text)}`);
         assert.ok(actual.every((w, i) => w === expected[i] || w === '□'), `${font} ${size}: no incorrect guess in this sample`);
       }
       const unknown = await page.evaluate(async () => {
