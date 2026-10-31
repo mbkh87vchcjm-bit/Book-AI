@@ -66,6 +66,56 @@
     'traffic': 'حركة مرور'
   };
 
+  function normalizeEnglishPhrase(value) {
+    return String(value || '').toLowerCase().replace(/[^a-z0-9\s]/g, ' ')
+      .replace(/\s+/g, ' ').trim();
+  }
+
+  function exactTerm(lexicon, value) {
+    var norm = normalizeEnglishPhrase(value);
+    var upper = String(value || '').trim().toUpperCase();
+    var entries = lexicon && Array.isArray(lexicon.entries) ? lexicon.entries : [];
+    for (var i = 0; i < entries.length; i++) {
+      var e = entries[i];
+      var candidates = [e.term_ar, e.term_en].concat(e.aliases_ar || [], e.aliases_en || []);
+      if ((e.abbreviation && e.abbreviation.toUpperCase() === upper) ||
+          candidates.some(function (candidate) {
+            return candidate && normalizeEnglishPhrase(candidate) === norm;
+          })) return e;
+    }
+    return null;
+  }
+
+  // Reliable sentence patterns for common technical definitions. Unsupported
+  // sentences are not promoted from a word list into a false full translation.
+  var OBJECT_PHRASES = {
+    'reliable data transmission': 'نقل البيانات الموثوق',
+    'reliable data transmission between devices': 'نقل البيانات الموثوق بين الأجهزة',
+    'reliable and ordered data transmission': 'نقل البيانات الموثوق والمرتب',
+    'reliable and ordered data transmission between communicating hosts': 'نقل البيانات الموثوق والمرتب بين الأجهزة المتصلة',
+    'domain names into ip addresses': 'أسماء النطاقات إلى عناوين IP',
+    'fast data transmission': 'نقل بيانات سريع',
+    'network traffic': 'حركة مرور الشبكة',
+    'network traffic according to rules': 'حركة مرور الشبكة وفق قواعد محددة'
+  };
+
+  function translateKnownSentence(original, lexicon) {
+    var match = String(original || '').trim().match(/^(.+?)\s+(provides|provide|translates|translate|contains|contain|manages|manage|controls|control|executes|execute|identifies|identify)\s+(.+?)[.!?]?\s*$/i);
+    if (!match) return null;
+    var subject = exactTerm(lexicon, match[1]);
+    var verbEntry = VERB_MAP[match[2].toLowerCase()];
+    var objectArabic = OBJECT_PHRASES[normalizeEnglishPhrase(match[3])];
+    if (!subject || !subject.term_ar || !verbEntry || !objectArabic) return null;
+    var verbArabic = typeof verbEntry === 'object' ? verbEntry.ar : verbEntry;
+    return {
+      original: original,
+      translated: subject.term_ar + ' ' + verbArabic + ' ' + objectArabic + '.',
+      status: 'complete',
+      confidence: 0.9,
+      structured: true
+    };
+  }
+
   function translateSentence(sentence, learningStore) {
     var original = String(sentence || '').trim();
     if (!original) return { translated: '', confidence: 0, status: 'empty' };
@@ -85,8 +135,11 @@
 
     var lexicon = getLexicon();
 
-    // Exact lexicon match
-    var phraseMatch = lexicon.lookupTerm(original);
+    var structured = translateKnownSentence(original, lexicon);
+    if (structured) return structured;
+
+    // Exact phrase lookup only; substring matches can map 'data' to 'datagram'.
+    var phraseMatch = exactTerm(lexicon, original);
     if (phraseMatch && phraseMatch.term_ar) {
       return { translated: phraseMatch.term_ar, confidence: 0.95, status: 'complete' };
     }
@@ -104,7 +157,7 @@
       // Check 3-word technical phrase
       if (i + 2 < tokens.length) {
         var p3 = tokens[i] + ' ' + tokens[i+1] + ' ' + tokens[i+2];
-        var term3 = lexicon.lookupTerm(p3);
+        var term3 = exactTerm(lexicon, p3);
         if (term3 && term3.term_ar) {
           translatedTokens.push(term3.term_ar + (term3.abbreviation ? ' (' + term3.abbreviation + ')' : ''));
           matchedPhrases++;
@@ -116,7 +169,7 @@
       // Check 2-word technical phrase
       if (i + 1 < tokens.length) {
         var p2 = tokens[i] + ' ' + tokens[i+1];
-        var term2 = lexicon.lookupTerm(p2);
+        var term2 = exactTerm(lexicon, p2);
         if (term2 && term2.term_ar) {
           translatedTokens.push(term2.term_ar + (term2.abbreviation ? ' (' + term2.abbreviation + ')' : ''));
           matchedPhrases++;
@@ -126,7 +179,7 @@
       }
 
       // Check single word lexicon match
-      var singleTerm = lexicon.lookupTerm(word);
+      var singleTerm = exactTerm(lexicon, word);
       if (singleTerm && singleTerm.term_ar) {
         translatedTokens.push(singleTerm.term_ar + (singleTerm.abbreviation ? ' (' + singleTerm.abbreviation + ')' : ''));
         matchedPhrases++;
@@ -151,7 +204,7 @@
     }
 
     var arResult = translatedTokens.join(' ').replace(/\s+/g, ' ').trim();
-    var status = unknownWords.length === 0 ? 'complete' : (matchedPhrases > 0 ? 'partial' : 'unsupported');
+    var status = 'partial'; // Word-by-word substitutions are not a verified sentence translation.
 
     return {
       original: original,
