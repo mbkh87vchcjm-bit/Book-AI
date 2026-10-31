@@ -187,6 +187,7 @@
     // words; never contaminate a new topic with stale terms.
     if (!baseTerms.length && priorQuery) baseTerms = Array.from(new Set(words(priorQuery)));
     var terms = expandQueryTerms(query, baseTerms);
+    var hasCuratedExpansion = terms.length > baseTerms.length;
     var overview = isOverview(query);
     if (overview) {
       var seen = new Set();
@@ -235,7 +236,10 @@
         lexicalScore += idf * (tf * (k1 + 1)) / denominator * learnedWeight;
       });
       var matchedRatio = matched / Math.max(1, terms.length);
-      if (matched < 1 || (terms.length >= 4 && matchedRatio < 0.16)) lexicalScore = 0;
+      // A curated bilingual phrase may legitimately match only one English or Arabic anchor term.
+      // Keep the stricter ratio for ordinary unexpanded queries.
+      var minCoverage = hasCuratedExpansion ? 0.08 : 0.16;
+      if (matched < 1 || (terms.length >= 4 && matchedRatio < minCoverage)) lexicalScore = 0;
       var semanticScore = 0;
       if (semanticModel && typeof semanticModel.similarity === 'function') {
         try {
