@@ -8,7 +8,7 @@
   var MAX_TEXT_CHARS = 3000000;
   var MAX_PAGES = 500;
   var MAX_OCR_PAGES = 15;
-  var defaults = {mode: 'flexible', allowMath: true, maxSentences: 3, ocrEnabled: true};
+  var defaults = {mode: 'flexible', allowMath: true, maxSentences: 24, answerDepthVersion: 2, ocrEnabled: true};
   var state;
   var learningStore = null;
   var processing = false, cancelProcessing = false, savingWarning = false, storageBlocked = false, modalKind = null, toastTimer;
@@ -31,7 +31,13 @@
         if (!obj || !Array.isArray(obj.sessions) || !obj.sessions.length || obj.sessions.some(function (s) {
           return !s || typeof s.id !== 'string' || !Array.isArray(s.documents) || !Array.isArray(s.messages);
         })) throw new Error('Invalid saved state');
+        var savedDepthVersion = obj.settings && obj.settings.answerDepthVersion;
         obj.settings = Object.assign({}, defaults, obj.settings || {});
+        // Upgrade old 1/3/5 evidence settings once; do not leave existing notebooks terse.
+        if (savedDepthVersion !== 2) {
+          obj.settings.maxSentences = 24;
+          obj.settings.answerDepthVersion = 2;
+        }
         if (!obj.sessions.some(function (s) { return s.id === obj.activeId; })) obj.activeId = obj.sessions[0].id;
         return obj;
       }
@@ -122,7 +128,7 @@
   }
   function originMarkup(msg) {
     var text, css = msg.origin || '';
-    if (msg.origin === 'source' || msg.origin === 'extract') text = 'جمل مختارة من المرجع';
+    if (msg.origin === 'source' || msg.origin === 'extract') text = 'إجابة مبنية على أدلة المراجع';
     else if (msg.origin === 'calculation') text = 'حساب محلي، ليس من مرجع';
     else if (msg.origin === 'miss') text = 'لم يجد البحث نصًا مناسبًا';
     else if (msg.origin === 'error') text = 'تعذّر إكمال الإجابة';
@@ -267,17 +273,17 @@
   function openSettings() {
     if (processing) { toast('انتظر انتهاء قراءة المصدر أولًا.'); return; }
     var s = state.settings;
-    var content = '<section class="settings-section"><h3>المحرّك المحلي</h3><p>لا يحتاج التطبيق إلى استيراد نموذج. ينتقي جملًا من المراجع ويجري عمليات حسابية ومعادلات خطية بسيطة بقواعد مبرمجة؛ ليس نموذجًا لغويًا عامًا.</p></section>' +
+    var content = '<section class="settings-section"><h3>المحرّك المحلي</h3><p>يجمع أدلة من صفحات متعددة ويرتبها في إجابة موسعة مع المراجع. لا يستخدم نموذجًا لغويًا توليديًا؛ لذلك لا يكتب شرحًا حرًا، وقد يعرض النص الإنجليزي عندما لا يملك قاموس الترجمة المحلي ترجمة موثوقة.</p></section>' +
       '<section class="settings-section"><h3>القيود وطريقة الإجابة</h3><div class="setting-row"><div><strong>المصادر فقط</strong><small>يعرض جملًا من المراجع فقط، ولا يحسب من السؤال بصورة مستقلة.</small></div><label class="switch"><input type="checkbox" id="strict-mode" ' + (s.mode === 'strict' ? 'checked' : '') + '><span></span></label></div>' +
       '<div class="setting-row"><div><strong>السماح بالحساب المحلي</strong><small>للعمليات والمعادلات الخطية البسيطة عند إيقاف وضع المصادر فقط.</small></div><label class="switch"><input type="checkbox" id="allow-math" ' + (s.allowMath !== false ? 'checked' : '') + '><span></span></label></div>' +
-      '<label class="field"><span>عدد الجمل المنتقاة</span><select id="max-sentences"><option value="1">جملة واحدة</option><option value="3">٣ جمل</option><option value="5">٥ جمل</option></select></label></section>' +
+      '<label class="field"><span>عمق الإجابة وعدد الأدلة</span><select id="max-sentences"><option value="12">مفصل</option><option value="24">موسع — الافتراضي</option><option value="36">شامل حسب محتوى المرجع</option></select></label></section>' +
       '<section class="settings-section"><h3>قراءة الصفحات المصوّرة</h3><div class="setting-row"><div><strong>محاولة قراءة النص المطبوع من الصورة</strong><small>قوالب وقاموس محليان، حتى ١٥ صفحة مصوّرة لكل ملف.</small></div><label class="switch"><input type="checkbox" id="ocr-enabled" ' + (s.ocrEnabled !== false ? 'checked' : '') + '><span></span></label></div><p class="field-help">تجريبية ومحدودة الخطوط؛ قد تخطئ أو لا تتعرف على كلمات. لا تفهم الرسومات أو الخط اليدوي. صحّح النص بمقارنته بصورة الصفحة.</p></section>' +
       '<section class="settings-section"><h3>الخصوصية والتطوير</h3><p>المصادر والمحادثات محلية، ولا يطلب التطبيق صلاحية الإنترنت. البحث والتلخيص اقتباسيان، ولا يتعامل المحرك مع كل أنواع الأسئلة.</p><p style="margin-top:8px;font-size:0.85em;color:var(--text-secondary)">المطور محمد الفقيه</p></section>';
     openModal(modalShell('الإعدادات والتحكم', 'اضبط القيود المناسبة لك.', content, '<button class="button-secondary" id="cancel-settings">إلغاء</button><button class="button-primary" id="save-settings">حفظ الإعدادات</button>'), 'settings');
-    $('max-sentences').value = String(s.maxSentences || 3);
+    $('max-sentences').value = String(s.maxSentences || 24);
     $('cancel-settings').onclick = closeModal;
     $('save-settings').onclick = function () {
-      state.settings = {mode: $('strict-mode').checked ? 'strict' : 'flexible', allowMath: $('allow-math').checked, maxSentences: Number($('max-sentences').value), ocrEnabled: $('ocr-enabled').checked};
+      state.settings = {mode: $('strict-mode').checked ? 'strict' : 'flexible', allowMath: $('allow-math').checked, maxSentences: Number($('max-sentences').value), answerDepthVersion: 2, ocrEnabled: $('ocr-enabled').checked};
       saveState(); closeModal(); renderAll(); toast('تم حفظ الإعدادات.');
     };
   }
