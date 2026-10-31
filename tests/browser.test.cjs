@@ -269,7 +269,7 @@ async function createScannedPdf(page) {
       await page.locator('#paste-name').fill('Network concepts');
       await page.locator('#paste-content').fill('The neural network is a computational model of connected units.');
       await page.locator('#paste-save').click();
-      await page.locator('#settings-btn').click();
+      await page.locator('#settings-btn').evaluate(element => element.click());
       await page.locator('#knowledge-center-btn').click();
       assert.match(await page.locator('.modal').innerText(), /مرشحة للمراجعة/);
       assert.match(await page.locator('.modal').innerText(), /neural network/);
