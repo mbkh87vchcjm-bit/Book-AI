@@ -65,3 +65,24 @@ test('recognizes an answer problem from the source instead of guessing the exerc
   assert.equal(source.references[0].page,2);
   assert.match(source.references[0].excerpt,/الأرض/);
 });
+
+
+test('answers an Arabic question from an English source using curated bilingual retrieval', () => {
+  const englishDocs = [{id:'ai',name:'Artificial-Intelligence.pdf',type:'pdf',pages:[
+    {page:8,text:'Artificial intelligence systems can learn patterns from data.'}
+  ]}];
+  const result = A.answer({documents:englishDocs,question:'ما هو الذكاء الاصطناعي؟',mode:'strict'});
+  assert.equal(result.origin,'source');
+  assert.equal(result.references[0].page,8);
+  assert.match(result.references[0].excerpt,/Artificial intelligence/);
+});
+
+test('answers an English question from an Arabic source using curated bilingual retrieval', () => {
+  const arabicDocs = [{id:'nn',name:'Networks.pdf',type:'pdf',pages:[
+    {page:5,text:'الشبكة العصبية نظام حسابي يتكون من وحدات مترابطة.'}
+  ]}];
+  const result = A.answer({documents:arabicDocs,question:'What is a neural network?',mode:'strict'});
+  assert.equal(result.origin,'source');
+  assert.equal(result.references[0].page,5);
+  assert.match(result.references[0].excerpt,/الشبكة العصبية/);
+});
