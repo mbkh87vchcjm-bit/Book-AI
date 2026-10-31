@@ -343,7 +343,7 @@
     options = options || {};
     var question = String(options.question || '').trim(), docs = options.documents || [];
     var strict = options.mode === 'strict';
-    var limit = Math.max(5, Math.min(12, Number(options.maxSentences) || 8));
+    var limit = Math.max(3, Math.min(12, Number(options.maxSentences) || 8));
     if (!strict && options.allowMath !== false) {
       var calculation = calculate(question);
       if (calculation) return calculation.error
@@ -353,6 +353,9 @@
     var intent = classifyIntent(question);
     var semanticModel = options.semanticModel || null;
     var found = E.search(docs, question, 18, options.priorQuestion || '', options.termWeights || null, semanticModel);
+    // Treat a recognized summary request as an overview even if the lexical
+    // retrieval path returns few topical words after stop-word filtering.
+    if (intent === 'summary') found.overview = true;
     var selected = collectEvidence(docs, found, question, limit, semanticModel, intent);
     if (!selected.length && Knowledge && Array.isArray(options.knowledgeFacts)) {
       var knowledgeHits = Knowledge.search(options.knowledgeFacts, question, limit);
