@@ -18,7 +18,7 @@ cp "$ROOT/third_party/"*.txt "$ROOT/third_party/NOTICE.md" "$OUT/assets/licenses
 "$BT/aapt2" compile --dir "$ROOT/app/src/main/res" -o "$OUT/compiled/resources.zip"
 "$BT/aapt2" link -I "$ANDROID_JAR" --manifest "$ROOT/app/src/main/AndroidManifest.xml" \
   --java "$OUT/generated" --min-sdk-version 28 --target-sdk-version 34 \
-  --version-code 2 --version-name 2.0.0 -A "$OUT/assets" \
+  --version-code 3 --version-name 2.1.0 -A "$OUT/assets" \
   -o "$OUT/base.apk" "$OUT/compiled/resources.zip"
 find "$ROOT/app/src/main/java" "$OUT/generated" -name '*.java' -print > "$OUT/sources.txt"
 "$JAVA_HOME/bin/javac" -parameters -encoding UTF-8 -source 8 -target 8 -classpath "$ANDROID_JAR" -d "$OUT/classes" @"$OUT/sources.txt"
