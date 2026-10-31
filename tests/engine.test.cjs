@@ -73,3 +73,39 @@ test('search carries the OCR origin through to the real page reference', () => {
   assert.equal(hit.ocr, true);
   assert.ok(scanned.pages[0].text.includes(hit.text));
 });
+
+
+test('preserves original Arabic letters while adding conservative stem variants', () => {
+  const data = E.words('البيانات والبرنامج والبرمجيات');
+  assert.ok(data.includes('البيانات'));
+  assert.ok(data.includes('بيانات'));
+  assert.ok(data.includes('بيان'));
+  assert.ok(data.includes('والبرنامج'));
+  assert.ok(data.includes('برنامج'));
+  const definiteProgram = E.words('البرنامج');
+  assert.ok(definiteProgram.includes('البرنامج'));
+  assert.ok(definiteProgram.includes('برنامج'));
+  assert.ok(!data.includes('يانات'));
+  assert.ok(!data.includes('رنامج'));
+});
+
+test('matches common singular/plural Arabic technical forms without neural models', () => {
+  const doc = {id: 'n', name: 'networking.pdf', type: 'pdf', pages: [
+    {page: 9, text: 'الشبكة العصبية نظام حسابي يتكون من وحدات مترابطة.'}
+  ]};
+  const result = E.search([doc], 'اشرح الشبكات العصبية');
+  assert.equal(result.references.length, 1);
+  assert.equal(result.references[0].page, 9);
+});
+
+test('preserves programming languages and network identifiers as searchable tokens', () => {
+  const tokens = E.words('C++ و C# و TCP/IP و 5G و IEEE 802.11ac');
+  for (const token of ['c++', 'c#', 'tcp/ip', '5g', 'ieee', '802.11ac']) {
+    assert.ok(tokens.includes(token), `missing token ${token}`);
+  }
+  const doc = {id: 'tech', name: 'tech.txt', type: 'text', pages: [
+    {page: 4, text: 'The course introduces C++ programming and TCP/IP networking.'}
+  ]};
+  assert.equal(E.search([doc], 'C++').references[0].page, 4);
+  assert.equal(E.search([doc], 'TCP/IP').references[0].page, 4);
+});
