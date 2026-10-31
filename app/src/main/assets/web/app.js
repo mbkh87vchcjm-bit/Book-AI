@@ -129,11 +129,16 @@
       if (!doc) return;
       confirmAction('حذف المصدر', 'سيُحذف النص المستخرج من هذا الدفتر. ستبقى الاقتباسات المحفوظة في المحادثة.', 'حذف المصدر', function () {
         var previousDocuments = session.documents, previousKnowledge = session.knowledge;
+        var previousModelData = session.semanticModelData || null, previousModelStatus = session.semanticModelStatus || 'pending';
         session.documents = session.documents.filter(function (d) { return d.id !== id; });
         if (Array.isArray(session.knowledge)) session.knowledge = session.knowledge.filter(function (fact) { return fact.docId !== id; });
+        session.semanticModelData = null;
+        session.semanticModelStatus = 'pending';
         if (!saveState()) {
           session.documents = previousDocuments;
           session.knowledge = previousKnowledge;
+          session.semanticModelData = previousModelData;
+          session.semanticModelStatus = previousModelStatus;
           return;
         }
         renderAll(); toast('تم حذف المصدر وحقائقه المرتبطة.');
@@ -265,7 +270,10 @@
       if (text.length > MAX_TEXT_CHARS) { toast('النص كبير جدًا.'); return; }
       var old = page.text, wasEdited = page.edited, session = activeSession();
       var oldKnowledge = Array.isArray(session.knowledge) ? session.knowledge : [];
+      var oldModelData = session.semanticModelData || null, oldModelStatus = session.semanticModelStatus || 'pending';
       page.text = text; page.edited = true;
+      session.semanticModelData = null;
+      session.semanticModelStatus = 'pending';
       if (Knowledge) {
         var retained = oldKnowledge.filter(function (fact) {
           return fact.docId !== id || Number(fact.page) !== Number(pageNumber);
@@ -276,6 +284,8 @@
         page.text = old;
         page.edited = wasEdited;
         session.knowledge = oldKnowledge;
+        session.semanticModelData = oldModelData;
+        session.semanticModelStatus = oldModelStatus;
         return;
       }
       openDocument(id, pageNumber); toast('حُفظ التصحيح.');
@@ -375,11 +385,16 @@
       var session = activeSession();
       var doc = {id: uid(), name: name, type: 'text', pages: [{page: 1, text: text}], totalPages: 1};
       var previousKnowledge = Array.isArray(session.knowledge) ? session.knowledge : [];
+      var previousModelData = session.semanticModelData || null, previousModelStatus = session.semanticModelStatus || 'pending';
       session.documents.push(doc);
       if (Knowledge) session.knowledge = Knowledge.merge(previousKnowledge, Knowledge.extractDocument(doc));
+      session.semanticModelData = null;
+      session.semanticModelStatus = 'pending';
       if (!saveState()) {
         session.documents.pop();
         session.knowledge = previousKnowledge;
+        session.semanticModelData = previousModelData;
+        session.semanticModelStatus = previousModelStatus;
         return;
       }
       closeModal(); renderAll(); toast('أُضيف النص إلى مصادرك.');
