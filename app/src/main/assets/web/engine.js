@@ -100,7 +100,7 @@
   }
 
   function search(documents, query, limit, priorQuery, learningStore) {
-    limit = limit || 3;
+    limit = Math.max(1, Math.min(50, Number(limit) || 3));
     var all = [];
     (documents || []).forEach(function (d) { all = all.concat(chunksForDocument(d)); });
     if (!all.length) return { references: [], overview: false, queryWords: [] };
