@@ -158,7 +158,7 @@ async function createScannedPdf(page) {
           const boxes = MidadOcr.layout(MidadOcr.binarize(ctx.getImageData(0, 0, c.width, c.height)), c.width, c.height);
           const diagnostics = boxes.map(line => line.map(box => {
             const match = MidadOcr.scoreFeature(table, MidadOcr.feature(c, box), box.width / box.height);
-            return {text: match.text, candidate: match.candidate || '', score: Number(match.score.toFixed(4)), uncertain: !!match.uncertain, width: box.width, height: box.height};
+            return {text: match.text, candidate: match.candidate || '', score: Number(match.score.toFixed(4)), margin: Number((match.margin || 0).toFixed(4)), nextScore: Number((match.nextScore || 0).toFixed(4)), uncertain: !!match.uncertain, width: box.width, height: box.height};
           }));
           out.push([font, size, recognition, diagnostics]);
         }
