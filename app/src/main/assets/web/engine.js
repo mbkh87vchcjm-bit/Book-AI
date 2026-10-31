@@ -61,7 +61,7 @@
       // across the text so BM25 can calculate real term frequency (TF).
       var localSeen = new Set();
       stemVariants(token).forEach(function (variant) {
-        if (variant && variant.length > 1 && !STOP.has(variant) && !localSeen.has(variant)) {
+        if (variant && (variant.length > 1 || (technical && /^\d$/.test(variant))) && !STOP.has(variant) && !localSeen.has(variant)) {
           localSeen.add(variant);
           result.push(variant);
         }
