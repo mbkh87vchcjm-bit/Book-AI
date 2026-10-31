@@ -54,7 +54,7 @@ test('extractive summaries stay grounded in the actual page text', () => {
   const result = A.answer({documents:docs,question:'لخص المراجع',mode:'strict',maxSentences:2});
   assert.equal(result.origin,'source'); assert.equal(result.references.length,2);
   for (const ref of result.references) assert.ok(docs[0].pages.find(p=>p.page===ref.page).text.includes(ref.excerpt));
-  assert.match(result.text, /ملخص اقتباسي/);
+  assert.match(result.text, /ملخص مرجعي موسع/);
 });
 
 test('recognizes an answer problem from the source instead of guessing the exercise', () => {
