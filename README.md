@@ -56,7 +56,8 @@
 
 المكوّنات:
 
-- `app/src/main/assets/web/engine.js` — بحث BM25 محلي، توسعة معجمية، وأوزان تتكيف مع تقييم المستخدم.\n- `app/src/main/assets/web/knowledge-graph.js` — استخراج علاقات مرشحة مع مرجع الصفحة ومراجعة بشرية.
+- `app/src/main/assets/web/engine.js` — بحث BM25 محلي، توسعة معجمية، وأوزان تتكيف مع تقييم المستخدم.
+- `app/src/main/assets/web/knowledge-graph.js` — استخراج علاقات مرشحة مع مرجع الصفحة ومراجعة بشرية.
 - `app/src/main/assets/web/local-answer.js` — انتقاء الجمل والاقتباس ومحلّل الحساب المقيّد.
 - `app/src/main/assets/web/ocr.js` — معالجة الصورة وتقطيع السطور والكلمات ومطابقة القوالب.
 - `app/src/main/assets/web/ocr/templates.bin` و`vocabulary.json` — جدول القوالب المولَّد محليًا والقاموس.
