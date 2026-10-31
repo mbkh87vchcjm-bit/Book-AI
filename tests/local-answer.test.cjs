@@ -74,7 +74,8 @@ test('generates interactive study tools (quiz/MCQ and concept explanation)', () 
 
   const explain = A.answer({documents:docs,question:'اشرح لي مفهوم الطاقة والجاذبية',mode:'strict'});
   assert.equal(explain.origin, 'source');
-  assert.match(explain.text, /توضيح المفاهيم/);
+  assert.match(explain.text, /إجابة مرجعية موسعة|شرح مرجعي موسع/);
+  assert.ok(explain.evidenceCount >= 1);
   assert.ok(explain.references.length > 0);
 });
 
