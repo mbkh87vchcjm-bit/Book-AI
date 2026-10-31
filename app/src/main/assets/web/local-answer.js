@@ -1,9 +1,28 @@
-/* A small, deterministic local assistant. This is NOT a trained LLM. */
+/* Midad Answer Engine — MLKE Integrated Answering Pipeline */
 (function (root, factory) {
-  if (typeof module === 'object' && module.exports) module.exports = factory(require('./engine.js'));
-  else root.MidadAnswer = factory(root.MidadEngine);
-}(typeof globalThis !== 'undefined' ? globalThis : this, function (E) {
+  if (typeof module === 'object' && module.exports) {
+    module.exports = factory(
+      require('./engine.js'),
+      require('./mlke-lexicon.js'),
+      require('./mlke-query.js'),
+      require('./mlke-translator.js'),
+      require('./mlke-knowledge.js')
+    );
+  } else {
+    root.MidadAnswer = factory(
+      root.MidadEngine,
+      root.MlkeLexicon,
+      root.MlkeQuery,
+      root.MlkeTranslator,
+      root.MlkeKnowledge
+    );
+  }
+}(typeof globalThis !== 'undefined' ? globalThis : this, function (E, LexiconClass, QueryModule, TranslatorModule, KnowledgeModule) {
   'use strict';
+
+  function getSharedLexicon(userEntries) {
+    return LexiconClass.getSharedInstance ? LexiconClass.getSharedInstance(userEntries) : new LexiconClass(userEntries);
+  }
 
   function normalizeMath(value) {
     return String(value || '').replace(/[٠-٩]/g, function (d) { return String(d.charCodeAt(0) - 0x660); })
@@ -11,17 +30,16 @@
       .replace(/[×✕]/g, '*').replace(/[÷]/g, '/').replace(/[−–]/g, '-')
       .replace(/٫/g, '.').replace(/[٪]/g, '%');
   }
+
   function extractExpression(question) {
     var q = normalizeMath(question).trim();
-    // Only solve an explicit expression, never pull numbers out of an unrelated question.
     q = q.replace(/^(?:كم(?:\s+يساوي)?|احسب|أحسب|احسبي|أوجد|اوجد|حل|ما\s+(?:ناتج|قيمة)|calculate|compute|solve|what\s+is)\s*[:：]?\s*/i, '');
     q = q.replace(/[؟?!؛;]+\s*$/, '').trim().replace(/س/g, 'x');
     if (!q || q.length > 160 || !/^[\d.xX+\-*/^%=()\s]+$/.test(q) || !/[0-9]/.test(q)) return null;
     if (!/[+\-*/^%=]/.test(q)) return null;
     return q.toLowerCase();
   }
-  // A bounded recursive-descent parser. Values are a*x + b, allowing linear
-  // equations while explicitly rejecting nonlinear equations and zero division.
+
   function parseLinear(source) {
     var tokens = [], re = /(?:\d+(?:\.\d*)?|\.\d+)|[x+\-*/^%=()]/g, m;
     while ((m = re.exec(source)) !== null) tokens.push(m[0]);
@@ -66,7 +84,6 @@
       var left = unary();
       while (at < tokens.length) {
         var op = tokens[at];
-        // 2x and 2(3+4) are conventional implicit multiplication.
         var implicit = op === 'x' || op === '(';
         if (op !== '*' && op !== '/' && !implicit) break;
         if (!implicit) at++;
@@ -92,10 +109,12 @@
     if (at !== tokens.length) throw new Error('صيغة غير مدعومة');
     return {left: left, right: right};
   }
+
   function displayNumber(n) {
     var rounded = Math.abs(n) < 1e-12 ? 0 : Number(n.toPrecision(12));
     return String(rounded);
   }
+
   function calculate(question) {
     var expr = extractExpression(question);
     if (!expr) return null;
@@ -116,10 +135,10 @@
   }
 
   function sentences(text) {
-    // Keep the actual characters of each selected sentence for source checking.
     return (String(text || '').match(/[^.!؟\n]+[.!؟]?/g) || [])
       .map(function (s) { return s.trim(); }).filter(function (s) { return s.length >= 8 && E.words(s).length; });
   }
+
   function selectSentences(documents, result, question, limit) {
     var q = new Set(E.words(question)), items = [];
     var sources = result.overview ? [] : result.references;
@@ -128,7 +147,6 @@
         if (page.text) sources.push({docId: doc.id, docName: doc.name, page: page.page, type: doc.type, text: page.text, ocr: !!page.ocr});
       }); });
     }
-    // Bound work on unusually large references; do not claim a full analysis.
     sources.slice(0, 120).forEach(function (ref, pageOrder) {
       sentences(ref.text).slice(0, 160).forEach(function (text, index) {
         var terms = E.words(text), matched = new Set(terms.filter(function (w) { return q.has(w); }));
@@ -147,26 +165,186 @@
     return chosen;
   }
 
+  function generateStudyFeatures(question, docs, found, limit) {
+    var q = E.normalize(question);
+    var isQuestionGen = /(?:اسئلة|أسئلة|تمارين|اختبار|اسئلة دراسية|أسئلة دراسية|quiz|questions|exercises)/.test(q);
+    var isMcq = /(?:خيارات|اختيار من متعدد|صح ام خطا|صح أو خطأ|صح وخطأ|mcq|true or false)/.test(q);
+    var isExplain = /(?:اشرح|توضيح|مفهوم|ما معنى|ما مفهوم|explain|clarify|concept)/.test(q);
+
+    if (!isQuestionGen && !isMcq && !isExplain) return null;
+
+    var selected = selectSentences(docs, found, question, limit);
+    if (!selected.length) {
+      selected = selectSentences(docs, {overview: true, references: []}, question, limit);
+    }
+    if (!selected.length) return null;
+
+    var refs = selected.map(function (item) { return {docId: item.ref.docId, docName: item.ref.docName,
+      page: item.ref.page, type: item.ref.type, excerpt: E.shorten(item.text, 600), ocr: !!item.ref.ocr}; });
+
+    if (isMcq) {
+      var bodyItems = selected.map(function (item, i) {
+        var cleanText = item.text.replace(/^[•\-*\d.\s]+/, '');
+        var num = i + 1;
+        if (i % 2 === 0) {
+          return 'السؤال [' + num + ']: عبارة صحيحة أم خاطئة؟\n«' + cleanText + '»\n' +
+            'أ) صحيحة (مباشرة من ' + item.ref.docName + ' صفحة ' + item.ref.page + ')\n' +
+            'ب) خاطئة';
+        } else {
+          return 'السؤال [' + num + ']: بناءً على النص القائل «' + cleanText + '»:\n' +
+            'أ) النص يؤكد هذه الحقيقة بالكامل\n' +
+            'ب) النص يناقض هذه الحقيقة\n' +
+            'ج) المرجع لا يتطرق إلى هذه المعلومة';
+        }
+      });
+      var header = 'تمارين واختبارات دراسية مستخرجة من مراجعك:';
+      var text = header + '\n\n' + bodyItems.join('\n\n') + '\n\nملاحظة: الأسئلة مصوغة مباشرة من نصوص المراجع واقتباساتها (توليد مبرمج مقيّد).';
+      return {text: text, origin: 'source', references: refs};
+    }
+
+    if (isQuestionGen) {
+      var qItems = selected.map(function (item, i) {
+        var cleanText = item.text.replace(/^[•\-*\d.\s]+/, '');
+        return 'سؤال [' + (i + 1) + ']: استنادًا إلى مرجع (' + item.ref.docName + ' صفحة ' + item.ref.page + '):\n' +
+          '«' + cleanText + '»\n' +
+          'السؤال: كيف يوضح المرجع المفهوم الوارد في هذا المقطع؟';
+      });
+      var qHeader = 'أسئلة مراجعة واستذكار مبنية على مراجعك:';
+      var qText = qHeader + '\n\n' + qItems.join('\n\n');
+      return {text: qText, origin: 'source', references: refs};
+    }
+
+    if (isExplain) {
+      var expItems = selected.map(function (item, i) {
+        return '[' + (i + 1) + '] الشرح والمقطع من (' + item.ref.docName + ' صفحة ' + item.ref.page + '):\n«' + item.text + '»';
+      });
+      var expHeader = 'توضيح المفاهيم والمقاطع المستخرجة من مراجعك:';
+      var expText = expHeader + '\n\n' + expItems.join('\n\n') + '\n\nهذا التوضيح يعتمد حصريًا على النصوص المقتبسة من المرجع.';
+      return {text: expText, origin: 'source', references: refs};
+    }
+
+    return null;
+  }
+
   function answer(options) {
     options = options || {};
-    var question = String(options.question || '').trim(), docs = options.documents || [];
-    var strict = options.mode === 'strict', limit = Math.max(1, Math.min(5, Number(options.maxSentences) || 3));
+    var lexicon = getSharedLexicon(options.userLexicon);
+    var question = String(options.question || '').trim();
+    var docs = options.documents || [];
+    var strict = options.mode === 'strict';
+    var limit = Math.max(1, Math.min(5, Number(options.maxSentences) || 3));
+
     if (!strict && options.allowMath !== false) {
       var calculation = calculate(question);
       if (calculation) return calculation.error
         ? {text: 'تعذّر الحساب: ' + calculation.error + '. يدعم المحرك العمليات الأساسية والمعادلات الخطية البسيطة فقط.', origin: 'calculation', references: []}
         : {text: calculation.text, origin: 'calculation', references: []};
     }
-    var found = E.search(docs, question, 5, options.priorQuestion || '');
+
+    // Step 1: Query Understanding
+    var queryObj = QueryModule ? QueryModule.parseQuery(question, lexicon) : { language: 'ar', intent: 'general', entities: [] };
+
+    var kb = new KnowledgeModule.KnowledgeBase();
+    docs.forEach(function (doc) {
+      (doc.pages || []).forEach(function (page) {
+        var fList = KnowledgeModule.extractFactsFromSentence(page.text, doc.name, page.page, doc.id);
+        fList.forEach(function (f) { kb.addFact(f); });
+      });
+    });
+
+    // Handle term_extraction intent directly with structured HTML table
+    if (queryObj.intent === 'term_extraction') {
+      var terms = kb.getAllTerms();
+      if (!terms.length) {
+        return {
+          text: 'لم يتم العثور على مصطلحات معرفية موثقة في المراجع المضافة.',
+          origin: 'miss',
+          references: []
+        };
+      }
+      var tbl = '<div class="table-container"><table>' +
+        '<thead><tr><th>المصطلح</th><th>التعريف / العلاقة</th><th>النص الأصلي</th><th>المرجع</th><th>الصفحة</th></tr></thead><tbody>';
+      terms.forEach(function (t) {
+        tbl += '<tr><td><strong>' + t.term + '</strong></td><td>' + t.definition + '</td><td>' + t.sourceText + '</td><td>' + t.docName + '</td><td>' + (t.page || '1') + '</td></tr>';
+      });
+      tbl += '</tbody></table></div>';
+      return {
+        text: 'قائمة المصطلحات التقنية المستخرجة من مراجعك:\n\n' + tbl,
+        origin: 'source',
+        references: terms.map(function (t) {
+          return { docName: t.docName, page: t.page, excerpt: t.sourceText, ocr: false };
+        })
+      };
+    }
+
+    // Step 2: Knowledge Extraction & Inference for Comparisons
+    if (KnowledgeModule && queryObj.intent === 'comparison') {
+      var inf = KnowledgeModule.inferAnswer(queryObj, docs, kb);
+      if (inf) return inf;
+    }
+
+    // Step 3: BM25 Retrieval & Selection with Learning Feedback
+    var found = E.search(docs, question, 5, options.priorQuestion || '', options.learningStore);
+
     var selected = selectSentences(docs, found, question, limit);
-    if (!selected.length) return {text: strict && !docs.length
-      ? 'أضف مرجعًا أولًا؛ وضع المصادر فقط لا يجيب من خارجها.'
-      : 'لم أجد نصًا مناسبًا في مراجعك. لا أملك معرفة عامة مولّدة؛ جرّب صياغة أخرى أو أضف مصدرًا. يمكنني أيضًا حساب تعبير أو حل معادلة خطية بسيطة عند السماح بالحساب.', origin: 'miss', references: []};
-    var refs = selected.map(function (item) { return {docId: item.ref.docId, docName: item.ref.docName,
-      page: item.ref.page, type: item.ref.type, excerpt: E.shorten(item.text, 600), ocr: !!item.ref.ocr}; });
-    var opening = found.overview ? 'ملخص اقتباسي من جمل مختارة (قد لا يشمل المرجع كاملًا):' : 'وجدت في المراجع جملًا قد تساعد في الإجابة:';
-    var body = refs.map(function (r, i) { return '[' + (i + 1) + '] «' + r.excerpt + '»'; }).join('\n\n');
-    return {text: opening + '\n\n' + body + '\n\nهذه جمل منتقاة آليًا، وليست فهمًا أو حلًا مضمونًا. راجع الصفحة الأصلية.', origin: 'source', references: refs};
+    if (!selected.length && found.references && found.references.length) {
+      selected = found.references.map(function (ref) {
+        return { text: ref.text, ref: ref };
+      });
+    }
+
+    var studyFeature = generateStudyFeatures(question, docs, found, limit);
+    if (studyFeature) return studyFeature;
+
+    if (!selected.length) {
+      return {
+        text: strict && !docs.length
+          ? 'أضف مرجعًا أولًا؛ وضع المصادر فقط لا يجيب من خارجها.'
+          : 'لم أجد معلومات كافية في المراجع المستوردة للإجابة عن هذا السؤال.',
+        origin: 'miss',
+        references: []
+      };
+    }
+
+    var refs = selected.map(function (item) {
+      return {
+        docId: item.ref.docId,
+        docName: item.ref.docName,
+        page: item.ref.page,
+        type: item.ref.type,
+        excerpt: E.shorten(item.text, 600),
+        ocr: !!item.ref.ocr
+      };
+    });
+
+    // Step 4: Translation if source is English and question is Arabic
+    var bodyPassages = selected.map(function (item, i) {
+      var num = i + 1;
+      var text = item.text;
+      var isEnglishSource = /[a-zA-Z]/.test(text) && (text.match(/[a-zA-Z]/g) || []).length > (text.match(/[\u0600-\u06ff]/g) || []).length;
+
+      if (isEnglishSource && queryObj.language === 'ar' && TranslatorModule) {
+        var tr = TranslatorModule.translateSentence(text, options.learningStore);
+        return '[' + num + '] الترجمة: «' + tr.translated + '»\nالنص الأصلي: "' + text + '"';
+      }
+      return '[' + num + '] «' + text + '»';
+    });
+
+    var header = found.overview ? 'ملخص اقتباسي من جمل مختارة:' : 'الإجابة المستخرجة من المراجع:';
+    var fullText = header + '\n\n' + bodyPassages.join('\n\n') + '\n\nملاحظة: جميع الاقتباسات مربوطة بالمصادر الأصلية ورقم الصفحة.';
+
+    return {
+      text: fullText,
+      origin: 'source',
+      references: refs
+    };
   }
-  return {answer: answer, calculate: calculate, extractExpression: extractExpression, parseLinear: parseLinear, sentences: sentences};
+
+  return {
+    answer: answer,
+    calculate: calculate,
+    extractExpression: extractExpression,
+    parseLinear: parseLinear,
+    sentences: sentences
+  };
 }));
