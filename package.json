@@ -4,7 +4,7 @@
   "private": true,
   "description": "Offline Arabic Android reference assistant",
   "scripts": {
-    "test": "node --test tests/mlke.test.cjs tests/engine.test.cjs tests/local-answer.test.cjs tests/ocr.test.cjs",
+    "test": "node --test tests/mlke-learning.test.cjs tests/mlke.test.cjs tests/engine.test.cjs tests/local-answer.test.cjs tests/ocr.test.cjs",
     "test:browser": "node tests/browser.test.cjs"
   },
   "devDependencies": {

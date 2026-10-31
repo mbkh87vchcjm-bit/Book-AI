@@ -244,21 +244,47 @@
     // Step 1: Query Understanding
     var queryObj = QueryModule ? QueryModule.parseQuery(question, lexicon) : { language: 'ar', intent: 'general', entities: [] };
 
+    var kb = new KnowledgeModule.KnowledgeBase();
+    docs.forEach(function (doc) {
+      (doc.pages || []).forEach(function (page) {
+        var fList = KnowledgeModule.extractFactsFromSentence(page.text, doc.name, page.page, doc.id);
+        fList.forEach(function (f) { kb.addFact(f); });
+      });
+    });
+
+    // Handle term_extraction intent directly with structured HTML table
+    if (queryObj.intent === 'term_extraction') {
+      var terms = kb.getAllTerms();
+      if (!terms.length) {
+        return {
+          text: 'لم يتم العثور على مصطلحات معرفية موثقة في المراجع المضافة.',
+          origin: 'miss',
+          references: []
+        };
+      }
+      var tbl = '<div class="table-container"><table>' +
+        '<thead><tr><th>المصطلح</th><th>التعريف / العلاقة</th><th>النص الأصلي</th><th>المرجع</th><th>الصفحة</th></tr></thead><tbody>';
+      terms.forEach(function (t) {
+        tbl += '<tr><td><strong>' + t.term + '</strong></td><td>' + t.definition + '</td><td>' + t.sourceText + '</td><td>' + t.docName + '</td><td>' + (t.page || '1') + '</td></tr>';
+      });
+      tbl += '</tbody></table></div>';
+      return {
+        text: 'قائمة المصطلحات التقنية المستخرجة من مراجعك:\n\n' + tbl,
+        origin: 'source',
+        references: terms.map(function (t) {
+          return { docName: t.docName, page: t.page, excerpt: t.sourceText, ocr: false };
+        })
+      };
+    }
+
     // Step 2: Knowledge Extraction & Inference for Comparisons
     if (KnowledgeModule && queryObj.intent === 'comparison') {
-      var kb = new KnowledgeModule.KnowledgeBase();
-      docs.forEach(function (doc) {
-        (doc.pages || []).forEach(function (page) {
-          var fList = KnowledgeModule.extractFactsFromSentence(page.text, doc.name, page.page, doc.id);
-          fList.forEach(function (f) { kb.addFact(f); });
-        });
-      });
       var inf = KnowledgeModule.inferAnswer(queryObj, docs, kb);
       if (inf) return inf;
     }
 
-    // Step 3: BM25 Retrieval & Selection
-    var found = E.search(docs, question, 5, options.priorQuestion || '');
+    // Step 3: BM25 Retrieval & Selection with Learning Feedback
+    var found = E.search(docs, question, 5, options.priorQuestion || '', options.learningStore);
 
     var selected = selectSentences(docs, found, question, limit);
     if (!selected.length && found.references && found.references.length) {
@@ -298,7 +324,7 @@
       var isEnglishSource = /[a-zA-Z]/.test(text) && (text.match(/[a-zA-Z]/g) || []).length > (text.match(/[\u0600-\u06ff]/g) || []).length;
 
       if (isEnglishSource && queryObj.language === 'ar' && TranslatorModule) {
-        var tr = TranslatorModule.translateSentence(text);
+        var tr = TranslatorModule.translateSentence(text, options.learningStore);
         return '[' + num + '] الترجمة: «' + tr.translated + '»\nالنص الأصلي: "' + text + '"';
       }
       return '[' + num + '] «' + text + '»';

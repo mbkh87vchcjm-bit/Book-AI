@@ -66,10 +66,24 @@
     'traffic': 'حركة مرور'
   };
 
-  function translateSentence(sentence) {
-    var lexicon = getLexicon();
+  function translateSentence(sentence, learningStore) {
     var original = String(sentence || '').trim();
     if (!original) return { translated: '', confidence: 0, status: 'empty' };
+
+    // Check user corrections from learning store first
+    if (learningStore && learningStore.lookupCorrection) {
+      var correction = learningStore.lookupCorrection(original);
+      if (correction && correction.corrected) {
+        return {
+          original: original,
+          translated: correction.corrected,
+          status: 'user-confirmed',
+          learned: true
+        };
+      }
+    }
+
+    var lexicon = getLexicon();
 
     // Exact lexicon match
     var phraseMatch = lexicon.lookupTerm(original);

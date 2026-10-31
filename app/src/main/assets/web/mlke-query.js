@@ -61,6 +61,9 @@
     if (/(?:علاقة|العلاقة بين|ارتباط|relationship|relation)/.test(norm) || /(?:relationship|relation)/.test(enNorm)) {
       return 'relationship';
     }
+    if (/(?:استخرج المصطلحات|المصطلحات المهمة|المفاهيم المهمة|اهم المصطلحات|extract terms|terms|key concepts)/.test(norm) || /(?:extract terms|terms|key concepts)/.test(enNorm)) {
+      return 'term_extraction';
+    }
 
     return 'general';
   }

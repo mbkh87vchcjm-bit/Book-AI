@@ -99,7 +99,7 @@
     return /(?:لخص|تلخيص|ملخص|اهم النقاط|نظره عامه|فكره عامه|ملخصا|summari[sz]e|overview|key points|main points)/.test(q);
   }
 
-  function search(documents, query, limit, priorQuery) {
+  function search(documents, query, limit, priorQuery, learningStore) {
     limit = limit || 3;
     var all = [];
     (documents || []).forEach(function (d) { all = all.concat(chunksForDocument(d)); });
@@ -167,7 +167,8 @@
           var nDocs = all.length;
           var idf = Math.log(1 + (nDocs - df[term] + 0.5) / (df[term] + 0.5));
           var termScore = idf * ((tf * (k1 + 1)) / (tf + k1 * (1 - b + b * (docLen / (avgDocLength || 1)))));
-          score += termScore * (termWeights[term] || 0.5);
+          var learnedWeight = (learningStore && learningStore.getTermWeight) ? learningStore.getTermWeight(term) : 1.0;
+          score += termScore * (termWeights[term] || 0.5) * learnedWeight;
         }
       });
 
