@@ -59,6 +59,14 @@
     return output;
   }
 
+  function baseWords(text) {
+    var pattern = /c\+\+|c#|f#|tcp\/ip|udp\/ip|http\/2|wi-fi|802\.11[a-z0-9]*|[a-z0-9]+(?:[+#]|\/[a-z0-9]+|\.[a-z0-9]+)*|[\u0621-\u063a\u0641-\u064a\u066e-\u06d3\u06fa-\u06fc\u0750-\u077f\u08a0-\u08c9]+/g;
+    var raw = normalize(text).match(pattern) || [];
+    return Array.from(new Set(raw.filter(function (token) {
+      return token.length > 1 && (/[+#/.]/.test(token) || /^\d/.test(token) || !STOP.has(token));
+    })));
+  }
+
   function extractPdfText(items) {
     var lines = [], line = [];
     function flush() {
@@ -225,5 +233,5 @@
     return chars.slice(0, Math.max(0, max - 1)).join('').trimEnd() + '…';
   }
 
-  return {normalize: normalize, words: words, extractPdfText: extractPdfText, chunksForDocument: chunksForDocument, search: search, shorten: shorten};
+  return {normalize: normalize, words: words, baseWords: baseWords, extractPdfText: extractPdfText, chunksForDocument: chunksForDocument, search: search, shorten: shorten};
 }));
