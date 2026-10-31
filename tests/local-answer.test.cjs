@@ -134,3 +134,36 @@ test('comparison searches both terms independently and avoids false missing-refe
   assert.ok(result.references.some(ref => ref.page === 4));
   assert.ok(result.references.some(ref => ref.page === 5));
 });
+
+
+test('semantic evidence can enter a detailed answer without exact lexical overlap', () => {
+  const docs = [{id:'semantic',name:'Semantic.pdf',type:'pdf',pages:[
+    {page:1,text:'The gateway forwards datagrams through a route table.'},
+    {page:2,text:'Bananas grow in tropical orchards.'}
+  ]}];
+  const model = {similarity: (question, passage) => passage.includes('gateway') ? 0.91 : 0.12};
+  const result = A.answer({
+    documents: docs, question: 'اشرح packet forwarding', mode: 'strict',
+    maxSentences: 12, semanticModel: model
+  });
+  assert.equal(result.origin,'source');
+  assert.ok(result.references.some(ref=>ref.page===1));
+  assert.equal(result.semanticUsed,true);
+});
+
+test('groups detailed answer evidence under descriptive role headings', () => {
+  const docs = [{id:'router',name:'Router.pdf',type:'pdf',pages:[
+    {page:1,text:'A router is a network device that connects different networks.'},
+    {page:2,text:'A router provides packet forwarding based on destination addresses.'},
+    {page:3,text:'First, the router checks its routing table before sending a packet.'},
+    {page:4,text:'For example, a router connects a local network to the Internet.'}
+  ]}];
+  const result = A.answer({
+    documents:docs, question:'اشرح وظيفة router وكيف يعمل',
+    mode:'strict', maxSentences:24
+  });
+  assert.equal(result.origin,'source');
+  assert.match(result.text,/التعريف والفكرة الأساسية/);
+  assert.match(result.text,/الوظيفة والاستخدام/);
+  assert.match(result.text,/آلية العمل والخطوات/);
+});
