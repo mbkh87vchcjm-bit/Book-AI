@@ -16,23 +16,55 @@
       .replace(/[ؤئ]/g, 'ء').replace(/[٠-٩]/g, function (d) { return String(d.charCodeAt(0) - 0x660); });
   }
 
-  function stem(token) {
+  function stemVariants(token) {
+    var variants = [token];
     var t = token;
     if (/^[\u0600-\u06ff]+$/.test(t)) {
-      if (t.length > 5 && /^(وال|بال|كال|فال|لل)/.test(t)) t = t.replace(/^(وال|بال|كال|فال|لل)/, '');
-      else if (t.length > 4 && /^ال/.test(t)) t = t.slice(2);
-      if (t.length > 5 && /^[وفب]/.test(t)) t = t.slice(1);
-      if (t.length > 5 && /(ات|ون|ين|ها|هم)$/.test(t)) t = t.slice(0, -2);
+      // Remove only known compound clitics or the definite article.
+      // Never strip a standalone initial و/ف/ب: that corrupted words such as
+      // البيانات -> يانات. Keep each intermediate form for safer matching.
+      if (t.length > 5 && /^(وال|بال|كال|فال|لل)/.test(t)) {
+        t = t.replace(/^(وال|بال|كال|فال|لل)/, '');
+      } else if (t.length > 4 && /^ال/.test(t)) {
+        t = t.slice(2);
+      }
+      if (t && variants.indexOf(t) < 0) variants.push(t);
+
+      // Conservative common plural / possessive suffixes.
+      if (t.length > 4 && /(ات|ون|ين|ها|هم)$/.test(t)) {
+        var withoutSuffix = t.slice(0, -2);
+        if (withoutSuffix.length >= 3 && variants.indexOf(withoutSuffix) < 0) variants.push(withoutSuffix);
+      }
+      // normalize() folds ta marbuta to ه. Retain the ه-form and add a
+      // secondary feminine-ending variant rather than replacing the original.
+      if (t.length > 3 && /ه$/.test(t)) {
+        var feminineBase = t.slice(0, -1);
+        if (feminineBase.length >= 3 && variants.indexOf(feminineBase) < 0) variants.push(feminineBase);
+      }
     } else if (/^[a-z]+$/.test(t) && t.length > 5) {
-      t = t.replace(/(ing|ed|es|s)$/, '');
+      var englishStem = t.replace(/(ing|ed|es|s)$/, '');
+      if (englishStem.length > 2 && englishStem !== t) variants.push(englishStem);
     }
-    return t;
+    return variants;
   }
 
   function words(text) {
-    var raw = normalize(text).match(/[a-z0-9\u0621-\u063a\u0641-\u064a\u066e-\u06d3\u06fa-\u06fc\u0750-\u077f\u08a0-\u08c9]+/g) || [];
-    return raw.filter(function (x) { return x.length > 1 && !STOP.has(x); })
-      .map(stem).filter(function (x) { return x.length > 1 && !STOP.has(x); });
+    // Keep common technical identifiers intact. A generic alphanumeric regex
+    // previously discarded C++/C# and split TCP/IP and IEEE 802.11.
+    var tokenPattern = /c\+\+|c#|f#|tcp\/ip|udp\/ip|http\/2|wi-fi|802\.11[a-z0-9]*|[a-z0-9]+(?:[+#]|\/[a-z0-9]+|\.[a-z0-9]+)*|[\u0621-\u063a\u0641-\u064a\u066e-\u06d3\u06fa-\u06fc\u0750-\u077f\u08a0-\u08c9]+/g;
+    var raw = normalize(text).match(tokenPattern) || [];
+    var result = [], seen = new Set();
+    raw.forEach(function (token) {
+      var technical = /[+#/.]/.test(token) || /^\d/.test(token);
+      if ((!technical && token.length < 2) || STOP.has(token)) return;
+      stemVariants(token).forEach(function (variant) {
+        if (variant && variant.length > 1 && !STOP.has(variant) && !seen.has(variant)) {
+          seen.add(variant);
+          result.push(variant);
+        }
+      });
+    });
+    return result;
   }
 
 
