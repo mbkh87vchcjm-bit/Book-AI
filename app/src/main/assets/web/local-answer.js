@@ -121,7 +121,7 @@
       .map(function (s) { return s.trim(); }).filter(function (s) { return s.length >= 8 && E.words(s).length; });
   }
   function selectSentences(documents, result, question, limit) {
-    var q = new Set(E.words(question)), items = [];
+    var q = new Set(result.queryWords && result.queryWords.length ? result.queryWords : E.words(question)), items = [];
     var sources = result.overview ? [] : result.references;
     if (result.overview) {
       documents.forEach(function (doc) { (doc.pages || []).forEach(function (page) {
