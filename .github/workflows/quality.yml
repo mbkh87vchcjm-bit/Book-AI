@@ -30,6 +30,7 @@ jobs:
         run: |
           node --check app/src/main/assets/web/app.js
           node --check app/src/main/assets/web/engine.js
+          node --check app/src/main/assets/web/neural-semantic.js
           node --check app/src/main/assets/web/knowledge-graph.js
           node --check app/src/main/assets/web/local-answer.js
           node --check app/src/main/assets/web/ocr.js
