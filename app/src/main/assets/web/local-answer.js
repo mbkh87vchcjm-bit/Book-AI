@@ -141,6 +141,7 @@
 
   function selectSentences(documents, result, question, limit) {
     var q = new Set(E.words(question).concat(result.queryWords || [])), items = [];
+    var semanticPages = new Set(result.semanticPages || []);
     var sources = result.overview ? [] : (result.references || []);
 
     // Full-reference summaries sample the complete document, not just its opening pages.
@@ -169,10 +170,11 @@
       sentences(ref.text).slice(0, 160).forEach(function (text, index) {
         var terms = E.words(text);
         var matched = new Set(terms.filter(function (w) { return q.has(w); }));
-        var score = matched.size * 5 + Math.min(terms.length, 30) / 40;
-        // The BM25 engine expands bilingual terms. Reuse those terms here instead
-        // of silently discarding English passages that matched the Arabic query.
-        if (q.size && !matched.size) return;
+        var pageKey = String(ref.docId || ref.docName) + ':' + String(ref.page);
+        var semanticHit = semanticPages.has(pageKey);
+        var score = matched.size * 5 + Math.min(terms.length, 30) / 40 + (semanticHit ? 4 : 0);
+        // Admit high-confidence semantic hits even when no literal term matches.
+        if (q.size && !matched.size && !semanticHit) return;
         items.push({score: score, order: pageOrder * 1000 + index, text: text, ref: ref});
       });
     });
@@ -308,7 +310,7 @@
     var groups = [];
     var perEntityLimit = Math.max(8, Math.min(18, Math.ceil(limit / 2)));
     entities.forEach(function (entity) {
-      var found = E.search(docs, entity, 30, '', options.learningStore);
+      var found = E.search(docs, entity, 30, '', options.learningStore, options.semanticModel);
       var selected = selectSentences(docs, found, entity, perEntityLimit);
       if (!selected.length && found.references && found.references.length) {
         selected = found.references.map(function (ref) { return {text: ref.text, ref: ref}; });
@@ -349,9 +351,60 @@
     };
   }
 
+  function sentenceRole(text) {
+    var value = E.normalize(text);
+    if (/(?:يعرف بانه|تعرف بانها|هو عباره عن|هي عباره عن|هو نظام|هي نظام|is defined as|refers to|is a|are a|is an|are an)/.test(value)) return 'definition';
+    if (/(?:بسبب|لان|لانه|نتيجه ل|يؤدي الى|ينتج عن|because|due to|as a result|therefore|leads to)/.test(value)) return 'cause';
+    if (/(?:اولا|ثانيا|ثم|بعد ذلك|خطوه|مرحله|يتكون من|تتكون من|يمر عبر|first|second|then|next|step|stage|consists of|is composed of)/.test(value)) return 'process';
+    if (/(?:وظيفته|وظيفتها|يستخدم في|تستخدم في|يتيح|يسمح|يمكن من|يعمل على|provides|enables|allows|is used to|used for|functions? as)/.test(value)) return 'function';
+    if (/(?:مثلا|على سبيل المثال|مثل|من امثله|for example|such as|e\\.g\\.)/.test(value)) return 'example';
+    if (/(?:مزايا|ميزات|فوائد|من فوائد|يساعد على|advantages|benefits|strengths|improves)/.test(value)) return 'advantage';
+    if (/(?:عيوب|قيود|محدود|لا يدعم|من سلبيات|limitations|drawbacks|disadvantages|however|but|cannot)/.test(value)) return 'limitation';
+    if (/(?:بينما|على خلاف|بالمقابل|بخلاف|مقارنه|يختلف عن|whereas|unlike|in contrast|compared with|compared to)/.test(value)) return 'comparison';
+    return 'detail';
+  }
+
+  var ROLE_LABELS = {
+    definition: 'التعريف والفكرة الأساسية',
+    function: 'الوظيفة والاستخدام',
+    process: 'آلية العمل والخطوات',
+    cause: 'الأسباب والنتائج',
+    example: 'أمثلة وتطبيقات',
+    advantage: 'الفوائد والمزايا',
+    limitation: 'القيود والنقاط التي يجب الانتباه لها',
+    comparison: 'نقاط المقارنة والاختلاف',
+    detail: 'تفاصيل مرتبطة بالسؤال'
+  };
+
+  function rolePriority(intent) {
+    if (intent === 'process') return ['process','function','definition','detail','example','cause','advantage','limitation'];
+    if (intent === 'cause') return ['cause','function','detail','example','definition','process','limitation','advantage'];
+    if (intent === 'definition') return ['definition','function','detail','process','example','cause','advantage','limitation'];
+    if (intent === 'function') return ['function','definition','process','detail','example','cause','advantage','limitation'];
+    if (intent === 'comparison') return ['comparison','definition','function','detail','advantage','limitation','process','example'];
+    return ['definition','function','process','cause','example','advantage','limitation','comparison','detail'];
+  }
+
   function buildDetailedAnswer(selected, queryObj, question, options, found) {
-    var evidence = selected.map(function (item, i) {
-      return renderEvidenceItem(item, i, queryObj.language, options.learningStore);
+    var grouped = Object.create(null);
+    selected.forEach(function (item, index) {
+      var role = sentenceRole(item.text);
+      if (!grouped[role]) grouped[role] = [];
+      grouped[role].push({item: item, index: index});
+    });
+    var evidenceSections = [], usedRoles = new Set();
+    rolePriority(queryObj.intent).forEach(function (role) {
+      if (!grouped[role] || !grouped[role].length) return;
+      usedRoles.add(role);
+      evidenceSections.push('**' + ROLE_LABELS[role] + '**\n' + grouped[role].map(function (entry) {
+        return renderEvidenceItem(entry.item, entry.index, queryObj.language, options.learningStore);
+      }).join('\n\n'));
+    });
+    Object.keys(grouped).forEach(function (role) {
+      if (usedRoles.has(role)) return;
+      evidenceSections.push('**' + (ROLE_LABELS[role] || 'تفاصيل') + '**\n' + grouped[role].map(function (entry) {
+        return renderEvidenceItem(entry.item, entry.index, queryObj.language, options.learningStore);
+      }).join('\n\n'));
     });
     var title = queryObj.intent === 'process' ? 'شرح مرجعي موسع: آلية العمل والخطوات'
       : queryObj.intent === 'cause' ? 'شرح مرجعي موسع: الأسباب والنتائج'
@@ -362,7 +415,7 @@
     var text = '**' + title + '**\n\n';
     text += '**السؤال:** ' + question + '\n\n';
     text += '**المقاطع الداعمة من المرجع مرتبة بحسب الصفحات**\n\n';
-    text += evidence.join('\n\n');
+    text += evidenceSections.join('\n\n');
     text += '\n\n**حدود الإجابة**\n';
     text += 'هذه إجابة استرجاعية منظمة: جُمعت مقاطع ذات صلة من صفحات متعددة وربط كل مقطع بمصدره. المحرك لا يستخدم نموذجًا لغويًا توليديًا، لذلك لا يخترع شرحًا حرًا أو معلومات ليست في المرجع. ';
     if (selected.length < Math.max(10, Math.floor((Number(options.maxSentences) || 24) * 0.6))) {
@@ -376,7 +429,8 @@
       intent: queryObj.intent,
       evidenceCount: selected.length,
       references: uniqueReferences(selected),
-      overview: !!found.overview
+      overview: !!found.overview,
+      semanticUsed: !!found.semanticUsed
     };
   }
 
@@ -434,7 +488,7 @@
     // Step 2: Broad retrieval. The rule-based fact extractor only recognizes a
     // narrow set of sentence patterns, so it must not decide that a comparison side
     // is absent merely because its pattern did not match.
-    var found = E.search(docs, question, 50, options.priorQuestion || '', options.learningStore);
+    var found = E.search(docs, question, 50, options.priorQuestion || '', options.learningStore, options.semanticModel);
 
     if (queryObj.intent === 'comparison') {
       var comparison = buildComparisonAnswer(docs, queryObj, question, limit, options);
