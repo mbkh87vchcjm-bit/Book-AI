@@ -73,3 +73,33 @@ test('search carries the OCR origin through to the real page reference', () => {
   assert.equal(hit.ocr, true);
   assert.ok(scanned.pages[0].text.includes(hit.text));
 });
+
+
+test('preserves Arabic originals and adds conservative stem variants', () => {
+  const tokens = E.words('البيانات والبرنامج والبرمجيات');
+  assert.ok(tokens.includes('البيانات'));
+  assert.ok(tokens.includes('بيانات'));
+  assert.ok(tokens.includes('بيان'));
+  assert.ok(tokens.includes('والبرنامج'));
+  assert.ok(tokens.includes('برنامج'));
+  assert.ok(!tokens.includes('يانات'));
+  assert.ok(!tokens.includes('رنامج'));
+});
+
+test('preserves programming and network identifiers as searchable tokens', () => {
+  const tokens = E.words('C++ و C# و TCP/IP و 5G و IEEE 802.11ac');
+  for (const token of ['c++','c#','tcp/ip','5g','ieee','802.11ac']) {
+    assert.ok(tokens.includes(token), 'missing technical token ' + token);
+  }
+});
+
+test('semantic reranking can retrieve a high-confidence related passage without exact terms', () => {
+  const docs = [{id:'semantic',name:'Semantic.pdf',type:'pdf',pages:[
+    {page:1,text:'The gateway forwards datagrams through a route table.'},
+    {page:2,text:'Bananas grow in tropical orchards.'}
+  ]}];
+  const model = {similarity: (question, passage) => passage.includes('gateway') ? 0.91 : 0.12};
+  const result = E.search(docs,'explain packet forwarding',10,'',null,model);
+  assert.ok(result.references.some(ref => ref.page === 1));
+  assert.ok(result.semanticUsed);
+});
