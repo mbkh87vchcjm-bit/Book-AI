@@ -120,30 +120,96 @@
     return (String(text || '').match(/[^.!؟\n]+[.!؟]?/g) || [])
       .map(function (s) { return s.trim(); }).filter(function (s) { return s.length >= 8 && E.words(s).length; });
   }
+  function sampleOverviewSources(documents, maxPages) {
+    maxPages = maxPages || 120;
+    var groups = (documents || []).map(function (doc, docIndex) {
+      return {doc: doc, docIndex: docIndex, pages: (doc.pages || []).filter(function (page) { return String(page.text || '').trim(); })};
+    }).filter(function (group) { return group.pages.length; });
+    var total = groups.reduce(function (sum, group) { return sum + group.pages.length; }, 0);
+    if (total <= maxPages) {
+      return groups.reduce(function (out, group) {
+        group.pages.forEach(function (page, pageIndex) {
+          out.push({docId: group.doc.id, docName: group.doc.name, page: page.page, type: group.doc.type, text: page.text, ocr: !!page.ocr, docIndex: group.docIndex, pageIndex: pageIndex});
+        });
+        return out;
+      }, []);
+    }
+
+    // Give every document a representative sample before distributing the
+    // remaining sample budget in proportion to its non-empty page count.
+    var quotas = groups.map(function () { return 1; });
+    if (groups.length > maxPages) {
+      quotas = groups.map(function () { return 0; });
+      for (var d = 0; d < maxPages; d++) quotas[Math.round(d * (groups.length - 1) / Math.max(1, maxPages - 1))] = 1;
+    } else {
+      var remaining = maxPages - groups.length;
+      var capacity = groups.reduce(function (sum, group) { return sum + Math.max(0, group.pages.length - 1); }, 0);
+      var fractions = [];
+      groups.forEach(function (group, index) {
+        var exact = capacity ? remaining * Math.max(0, group.pages.length - 1) / capacity : 0;
+        var add = Math.min(group.pages.length - 1, Math.floor(exact));
+        quotas[index] += add;
+        fractions.push({index: index, fraction: exact - Math.floor(exact)});
+      });
+      var assigned = quotas.reduce(function (sum, quota) { return sum + quota; }, 0);
+      fractions.sort(function (a, b) { return b.fraction - a.fraction; });
+      while (assigned < maxPages) {
+        var progressed = false;
+        for (var f = 0; f < fractions.length && assigned < maxPages; f++) {
+          var idx = fractions[f].index;
+          if (quotas[idx] < groups[idx].pages.length) { quotas[idx]++; assigned++; progressed = true; }
+        }
+        if (!progressed) break;
+      }
+    }
+
+    var sampled = [];
+    groups.forEach(function (group, index) {
+      var quota = quotas[index];
+      if (!quota) return;
+      for (var j = 0; j < quota; j++) {
+        var pageIndex = quota === 1 ? Math.floor((group.pages.length - 1) / 2) : Math.round(j * (group.pages.length - 1) / (quota - 1));
+        var page = group.pages[pageIndex];
+        sampled.push({docId: group.doc.id, docName: group.doc.name, page: page.page, type: group.doc.type, text: page.text, ocr: !!page.ocr, docIndex: group.docIndex, pageIndex: pageIndex});
+      }
+    });
+    return sampled;
+  }
+
   function selectSentences(documents, result, question, limit) {
     var q = new Set(result.queryWords && result.queryWords.length ? result.queryWords : E.words(question)), items = [];
-    var sources = result.overview ? [] : result.references;
-    if (result.overview) {
-      documents.forEach(function (doc) { (doc.pages || []).forEach(function (page) {
-        if (page.text) sources.push({docId: doc.id, docName: doc.name, page: page.page, type: doc.type, text: page.text, ocr: !!page.ocr});
-      }); });
-    }
-    // Bound work on unusually large references; do not claim a full analysis.
-    sources.slice(0, 120).forEach(function (ref, pageOrder) {
+    var sources = result.overview ? sampleOverviewSources(documents, 120) : result.references;
+    sources.forEach(function (ref, pageOrder) {
       sentences(ref.text).slice(0, 160).forEach(function (text, index) {
         var terms = E.words(text), matched = new Set(terms.filter(function (w) { return q.has(w); }));
-        var score = result.overview ? Math.min(terms.length, 22) / 22 + 1 / (3 + index) : matched.size * 4 + Math.min(terms.length, 20) / 50;
+        var contentTermCount = terms.filter(function (term) { return !/^\d+$/.test(term); }).length;
+        var score = result.overview ? Math.min(contentTermCount, 22) / 22 + 1 / (3 + index) : matched.size * 4 + Math.min(terms.length, 20) / 50;
         if (!result.overview && q.size && !matched.size) return;
         items.push({score: score, order: pageOrder * 1000 + index, text: text, ref: ref});
       });
     });
     items.sort(function (a, b) { return b.score - a.score || a.order - b.order; });
-    var seen = new Set(), chosen = [];
+    var seen = new Set(), chosen = [], seenPages = new Set();
+    if (result.overview) {
+      // Keep the best sentence per page, then sample pages evenly so a short
+      // summary represents the beginning, middle, and end of each source set.
+      var bestPerPage = [];
+      items.forEach(function (item) {
+        var pageKey = String(item.ref.docId) + ':' + String(item.ref.page);
+        if (!seenPages.has(pageKey)) { bestPerPage.push(item); seenPages.add(pageKey); }
+      });
+      if (bestPerPage.length <= limit) chosen = bestPerPage;
+      else for (var sample = 0; sample < limit; sample++) {
+        var selectedIndex = Math.round(sample * (bestPerPage.length - 1) / Math.max(1, limit - 1));
+        chosen.push(bestPerPage[selectedIndex]);
+      }
+      chosen.sort(function (a, b) { return a.order - b.order; });
+      return chosen;
+    }
     items.forEach(function (item) {
       var key = E.normalize(item.text);
       if (chosen.length < limit && !seen.has(key)) { chosen.push(item); seen.add(key); }
     });
-    if (result.overview) chosen.sort(function (a, b) { return a.order - b.order; });
     return chosen;
   }
 
