@@ -83,9 +83,19 @@
     // Similar but different words are intentionally not presented as certain.
     // A low distance still does not guarantee correctness, especially for words
     // absent from the dictionary. Prefer a visible unknown over a weak match.
-    if (bestId < 0 || best > 0.075 || (next - best < 0.006 && best > 0.015)) return {text: '□', rtl: false, uncertain: true, score: best};
+    var margin = next - best;
+    // Calibrated upper bound for clean 28px Arabic glyphs. A candidate above
+    // the original 0.075 bound is still rejected when the second-best match is
+    // too close; this preserves the ambiguity guard and unknown-word tests.
+    if (bestId < 0 || best > 0.085 || (margin < 0.006 && best > 0.015)) {
+      // Expose only the nearest dictionary candidate for diagnostics. The
+      // recognizer still returns a visible unknown marker and never emits this
+      // candidate as recognized text unless it passes the confidence checks.
+      var nearest = bestId >= 0 ? wordFor(table, bestId).text : '';
+      return {text: '□', rtl: false, uncertain: true, score: best, candidate: nearest, margin: margin, nextScore: next};
+    }
     var result = wordFor(table, bestId);
-    result.uncertain = !result.text; result.score = best;
+    result.uncertain = !result.text; result.score = best; result.margin = margin; result.nextScore = next;
     if (!result.text) result.text = '□';
     return result;
   }
@@ -145,11 +155,38 @@
         if (last && r.start - last.end - 1 < wordGap) last.end = r.end;
         else segments.push({start: r.start, end: r.end});
       });
-      return segments.map(function (s) {
+      var boxes = segments.map(function (s) {
         var top = height, bottom = -1;
         for (var yy = line.start; yy <= line.end; yy++) for (var xx = s.start; xx <= s.end; xx++) if (mask[yy * width + xx]) { top = Math.min(top, yy); bottom = Math.max(bottom, yy); }
         return {left: s.start, top: top, width: s.end - s.start + 1, height: bottom - top + 1};
       }).filter(function (box) { return box.width >= 2 && box.height >= 3; });
+
+      // Arabic fonts can rasterize an isolated vertical stroke (most often
+      // alif/lam) as a separate 2-4px column run. Rejoin only a very narrow,
+      // full-height run with its immediately adjacent segment; ordinary gaps
+      // between words remain separate.
+      function isDetachedVertical(box) {
+        return box.width <= Math.max(4, Math.round(lineHeight * 0.12)) &&
+          box.height >= lineHeight * 0.55;
+      }
+      function uniteBoxes(a, b) {
+        var left = Math.min(a.left, b.left), top = Math.min(a.top, b.top);
+        var right = Math.max(a.left + a.width, b.left + b.width);
+        var bottom = Math.max(a.top + a.height, b.top + b.height);
+        return {left: left, top: top, width: right - left, height: bottom - top};
+      }
+      var joined = [];
+      boxes.forEach(function (box) {
+        var previous = joined[joined.length - 1];
+        var gap = previous ? box.left - (previous.left + previous.width) : Infinity;
+        var joinLimit = Math.max(3, Math.round(lineHeight * 0.28));
+        if (previous && gap <= joinLimit && (isDetachedVertical(previous) || isDetachedVertical(box))) {
+          joined[joined.length - 1] = uniteBoxes(previous, box);
+        } else {
+          joined.push(box);
+        }
+      });
+      return joined;
     }).filter(function (line) { return line.length > 0 && line.length <= 80; });
   }
   async function recognize(canvas, options) {

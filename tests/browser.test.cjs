@@ -11,9 +11,9 @@ const {chromium} = require('playwright-core');
 
 const web = path.resolve(__dirname, '../app/src/main/assets/web');
 const fixture = name => path.resolve(__dirname, 'fixtures', name);
-const executablePath = process.env.CHROMIUM_PATH;
+const executablePath = process.env.CHROMIUM_PATH || chromium.executablePath();
 const openBrowsers = new Set();
-if (!executablePath) throw new Error('Set CHROMIUM_PATH to a local Chromium executable.');
+if (!executablePath || !fs.existsSync(executablePath)) throw new Error('Install Playwright Chromium or set CHROMIUM_PATH to a local executable.');
 
 function server() {
   return new Promise(resolve => {
@@ -33,7 +33,7 @@ function server() {
 }
 async function browserPage(url, init) {
   const browser = await chromium.launch({executablePath, headless: true,
-    args: ['--no-sandbox', '--no-zygote', '--single-process', '--disable-dev-shm-usage', '--allow-file-access-from-files']});
+    args: ['--no-sandbox', '--no-zygote', '--disable-dev-shm-usage', '--allow-file-access-from-files']});
   openBrowsers.add(browser);
   const page = await browser.newPage({viewport: {width: 390, height: 844}});
   const errors = [];
@@ -107,11 +107,21 @@ async function createScannedPdf(page) {
       await page.waitForSelector('.reference-card');
       const answer = await page.locator('.message.assistant').innerText();
       assert.match(answer, /Osmosis/); assert.match(answer, /صفحة (2|٢)/);
+      assert.equal(await page.locator('[data-feedback="helpful"]').count(), 1);
+      await page.locator('[data-feedback="helpful"]').click();
+      let learnedState = await page.evaluate(() => JSON.parse(localStorage.getItem('midad-state-v1')));
+      assert.equal(learnedState.sessions[0].messages[1].feedback, 'helpful');
+      assert.ok(Object.keys(learnedState.learning.termWeights).length > 0);
       await page.locator('.reference-card').click();
       assert.match(await page.locator('.modal').innerText(), /semipermeable/);
       await page.locator('#open-full-page').click();
       assert.match(await page.locator('.modal').innerText(), /Osmosis/);
       await page.reload(); assert.equal(await page.locator('.message.assistant').count(), 1);
+      assert.equal(await page.locator('[data-feedback="helpful"][aria-pressed="true"]').count(), 1);
+      await page.locator('[data-feedback="unhelpful"]').click();
+      learnedState = await page.evaluate(() => JSON.parse(localStorage.getItem('midad-state-v1')));
+      assert.equal(learnedState.sessions[0].messages[1].feedback, 'unhelpful');
+      assert.ok(Object.values(learnedState.learning.termWeights).every(weight => weight >= 0.75 && weight <= 1.5));
       await page.locator('#menu-btn').click(); await page.locator('#new-session').click();
       assert.equal(await page.locator('.message').count(), 0); assert.equal(await page.locator('.source-item').count(), 0);
       await finish(scope, `${label}: text PDF, page citation, persistence and isolated notebook`);
@@ -153,15 +163,23 @@ async function createScannedPdf(page) {
           const c = document.createElement('canvas'); c.width = 1300; c.height = 230;
           const ctx = c.getContext('2d'); ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, c.width, c.height);
           ctx.fillStyle = '#000'; ctx.font = size + 'px ' + font; ctx.direction = 'rtl'; ctx.textAlign = 'right'; ctx.fillText(text, 1200, 100);
-          out.push([font, size, await MidadOcr.recognize(c)]);
+          const recognition = await MidadOcr.recognize(c);
+          const table = await MidadOcr.load();
+          const boxes = MidadOcr.layout(MidadOcr.binarize(ctx.getImageData(0, 0, c.width, c.height)), c.width, c.height);
+          const diagnostics = boxes.map(line => line.map(box => {
+            const match = MidadOcr.scoreFeature(table, MidadOcr.feature(c, box), box.width / box.height);
+            return {text: match.text, candidate: match.candidate || '', score: Number(match.score.toFixed(4)), margin: Number((match.margin || 0).toFixed(4)), nextScore: Number((match.nextScore || 0).toFixed(4)), uncertain: !!match.uncertain, left: box.left, top: box.top, width: box.width, height: box.height};
+          }));
+          out.push([font, size, recognition, diagnostics]);
         }
         return out;
       });
       const expected = 'الجاذبية هي قوة تجذب الأجسام نحو الأرض'.split(' ');
-      for (const [font, size, result] of results) {
+      for (const [font, size, result, diagnostics] of results) {
         const actual = result.text.split(' ');
-        assert.equal(actual.length, expected.length, `${font} ${size}: word count`);
-        assert.ok(actual.filter((w, i) => w === expected[i]).length >= 6, `${font} ${size}: minimum correct words`);
+        assert.equal(actual.length, expected.length, `${font} ${size}: word count OCR=${JSON.stringify(result.text)} boxes=${JSON.stringify(diagnostics)}`);
+        const correctWords = actual.filter((w, i) => w === expected[i]).length;
+        assert.ok(correctWords >= 6, `${font} ${size}: expected >=6 correct words, got ${correctWords}/${expected.length}; OCR=${JSON.stringify(result.text)}; boxes=${JSON.stringify(diagnostics)}`);
         assert.ok(actual.every((w, i) => w === expected[i] || w === '□'), `${font} ${size}: no incorrect guess in this sample`);
       }
       const unknown = await page.evaluate(async () => {
@@ -172,6 +190,18 @@ async function createScannedPdf(page) {
         return MidadOcr.recognize(c);
       });
       assert.equal(unknown.text, '□');
+
+      // A tighter unknown-word guard at the small Amiri size that exercises
+      // the relaxed absolute threshold; no unknown token may become a guess.
+      const smallAmiriUnknown = await page.evaluate(async () => {
+        await document.fonts.load('28px OcrAmiri', 'سفسطةتخمينيةزغرغوطية');
+        const c = document.createElement('canvas'); c.width = 1300; c.height = 230;
+        const ctx = c.getContext('2d'); ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, c.width, c.height);
+        ctx.font = '28px OcrAmiri'; ctx.textAlign = 'right'; ctx.direction = 'rtl'; ctx.fillStyle = '#000';
+        ctx.fillText('سفسطةتخمينيةزغرغوطية', 1200, 100);
+        return MidadOcr.recognize(c);
+      });
+      assert.equal(smallAmiriUnknown.text, '□');
       await finish(scope, 'Four clean Arabic fonts and four sizes; unrecognized word marked');
     }
 

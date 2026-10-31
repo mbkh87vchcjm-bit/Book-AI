@@ -16,23 +16,58 @@
       .replace(/[ؤئ]/g, 'ء').replace(/[٠-٩]/g, function (d) { return String(d.charCodeAt(0) - 0x660); });
   }
 
-  function stem(token) {
+  function stemVariants(token) {
+    var variants = [token];
     var t = token;
     if (/^[\u0600-\u06ff]+$/.test(t)) {
-      if (t.length > 5 && /^(وال|بال|كال|فال|لل)/.test(t)) t = t.replace(/^(وال|بال|كال|فال|لل)/, '');
-      else if (t.length > 4 && /^ال/.test(t)) t = t.slice(2);
-      if (t.length > 5 && /^[وفب]/.test(t)) t = t.slice(1);
-      if (t.length > 5 && /(ات|ون|ين|ها|هم)$/.test(t)) t = t.slice(0, -2);
+      // Remove only known compound clitics or the definite article.
+      // Never strip a standalone initial و/ف/ب: that corrupted words such as
+      // البيانات -> يانات. Keep each intermediate form for safer matching.
+      if (t.length > 5 && /^(وال|بال|كال|فال|لل)/.test(t)) {
+        t = t.replace(/^(وال|بال|كال|فال|لل)/, '');
+      } else if (t.length > 4 && /^ال/.test(t)) {
+        t = t.slice(2);
+      }
+      if (t && variants.indexOf(t) < 0) variants.push(t);
+
+      // Conservative common plural / possessive suffixes.
+      if (t.length > 4 && /(ات|ون|ين|ها|هم)$/.test(t)) {
+        var withoutSuffix = t.slice(0, -2);
+        if (withoutSuffix.length >= 3 && variants.indexOf(withoutSuffix) < 0) variants.push(withoutSuffix);
+      }
+      // normalize() folds ta marbuta to ه. Retain the ه-form and add a
+      // secondary feminine-ending variant rather than replacing the original.
+      if (t.length > 3 && /ه$/.test(t)) {
+        var feminineBase = t.slice(0, -1);
+        if (feminineBase.length >= 3 && variants.indexOf(feminineBase) < 0) variants.push(feminineBase);
+      }
     } else if (/^[a-z]+$/.test(t) && t.length > 5) {
-      t = t.replace(/(ing|ed|es|s)$/, '');
+      var englishStem = t.replace(/(ing|ed|es|s)$/, '');
+      if (englishStem.length > 2 && englishStem !== t) variants.push(englishStem);
     }
-    return t;
+    return variants;
   }
 
   function words(text) {
-    var raw = normalize(text).match(/[a-z0-9\u0621-\u063a\u0641-\u064a\u066e-\u06d3\u06fa-\u06fc\u0750-\u077f\u08a0-\u08c9]+/g) || [];
-    return raw.filter(function (x) { return x.length > 1 && !STOP.has(x); })
-      .map(stem).filter(function (x) { return x.length > 1 && !STOP.has(x); });
+    // Keep common technical identifiers intact. A generic alphanumeric regex
+    // previously discarded C++/C# and split TCP/IP and IEEE 802.11.
+    var tokenPattern = /c\+\+|c#|f#|tcp\/ip|udp\/ip|http\/2|wi-fi|802\.11[a-z0-9]*|[a-z0-9]+(?:[+#]|\/[a-z0-9]+|\.[a-z0-9]+)*|[\u0621-\u063a\u0641-\u064a\u066e-\u06d3\u06fa-\u06fc\u0750-\u077f\u08a0-\u08c9]+/g;
+    var raw = normalize(text).match(tokenPattern) || [];
+    var result = [];
+    raw.forEach(function (token) {
+      var technical = /[+#/.]/.test(token) || /^\d/.test(token);
+      if ((!technical && token.length < 2) || STOP.has(token)) return;
+      // Deduplicate variants only within this token. Preserve repeated tokens
+      // across the text so BM25 can calculate real term frequency (TF).
+      var localSeen = new Set();
+      stemVariants(token).forEach(function (variant) {
+        if (variant && (variant.length > 1 || (technical && /^\d$/.test(variant))) && !STOP.has(variant) && !localSeen.has(variant)) {
+          localSeen.add(variant);
+          result.push(variant);
+        }
+      });
+    });
+    return result;
   }
 
 
@@ -97,19 +132,50 @@
     return /(?:لخص|تلخيص|ملخص|اهم النقاط|نظره عامه|فكره عامه|ملخصا|summari[sz]e|overview|key points|main points)/.test(q);
   }
 
-  function search(documents, query, limit, priorQuery) {
+  // Curated bilingual aliases. These are lexical equivalences, not semantic
+  // embeddings; each mapping is deliberately explicit and testable.
+  var BILINGUAL_ALIASES = [
+    {phrases: ['الذكاء الاصطناعي', 'ذكاء اصطناعي', 'artificial intelligence'], terms: ['ذكاء اصطناعي', 'artificial intelligence']},
+    {phrases: ['الشبكة العصبية', 'الشبكات العصبية', 'neural network', 'neural networks'], terms: ['شبكة عصبية', 'neural network']},
+    {phrases: ['تعلم الالة', 'التعلم الالي', 'machine learning'], terms: ['تعلم الالة', 'machine learning']},
+    {phrases: ['قواعد البيانات', 'قاعدة البيانات', 'database', 'databases'], terms: ['قاعدة البيانات', 'database']},
+    {phrases: ['نظام التشغيل', 'انظمة التشغيل', 'operating system', 'operating systems'], terms: ['نظام التشغيل', 'operating system']},
+    {phrases: ['شبكة الحاسوب', 'شبكات الحاسوب', 'computer network', 'computer networks'], terms: ['شبكة الحاسوب', 'computer network']},
+    {phrases: ['تبديل الحزم', 'packet switching'], terms: ['تبديل الحزم', 'packet switching']},
+    {phrases: ['نظام اسماء النطاقات', 'اسماء النطاقات', 'domain name system', 'dns'], terms: ['نظام اسماء النطاقات', 'domain name system', 'dns']},
+    {phrases: ['بروتوكول التحكم بالنقل', 'بروتوكول التحكم في النقل', 'transmission control protocol', 'tcp'], terms: ['بروتوكول التحكم بالنقل', 'transmission control protocol', 'tcp']},
+    {phrases: ['بروتوكول الانترنت', 'internet protocol'], terms: ['بروتوكول الانترنت', 'internet protocol']}
+  ];
+
+  function expandQueryTerms(query, baseTerms) {
+    var normalized = normalize(query).replace(/[^a-z0-9\u0621-\u063a\u0641-\u064a]+/g, ' ').trim();
+    var terms = new Set(baseTerms || words(query));
+    BILINGUAL_ALIASES.forEach(function (entry) {
+      var matched = entry.phrases.some(function (phrase) {
+        var normalizedPhrase = normalize(phrase).replace(/[^a-z0-9\u0621-\u063a\u0641-\u064a]+/g, ' ').trim();
+        if (!normalizedPhrase) return false;
+        // A short acronym must be a complete tokenizer unit: TCP must not
+        // match the TCP portion of the distinct identifier TCP/IP.
+        if (/^[a-z0-9]{2,4}$/.test(normalizedPhrase)) return baseTerms.indexOf(normalizedPhrase) >= 0;
+        return (' ' + normalized + ' ').indexOf(' ' + normalizedPhrase + ' ') >= 0;
+      });
+      if (matched) entry.terms.forEach(function (phrase) { words(phrase).forEach(function (term) { terms.add(term); }); });
+    });
+    return Array.from(terms);
+  }
+
+  function search(documents, query, limit, priorQuery, termWeights) {
     limit = limit || 3;
     var all = [];
     (documents || []).forEach(function (d) { all = all.concat(chunksForDocument(d)); });
     if (!all.length) return { references: [], overview: false, queryWords: [] };
-    var terms = Array.from(new Set(words(query)));
+    var baseTerms = Array.from(new Set(words(query)));
     // Only inherit the previous question when the current one has no topical
-    // words. Adding old terms to a new one-word topic can suppress its real hit
-    // (or falsely cite an unrelated page from the previous turn).
-    if (!terms.length && priorQuery) terms = Array.from(new Set(words(priorQuery)));
+    // words; never contaminate a new topic with stale terms.
+    if (!baseTerms.length && priorQuery) baseTerms = Array.from(new Set(words(priorQuery)));
+    var terms = expandQueryTerms(query, baseTerms);
     var overview = isOverview(query);
     if (overview) {
-      // Overview requests have no topical terms. Select representative beginnings, one per document/page.
       var seen = new Set();
       var samples = all.filter(function (c) {
         var key = c.docId + ':' + c.page;
@@ -119,31 +185,55 @@
       return { references: samples, overview: true, queryWords: terms };
     }
     if (!terms.length) return { references: [], overview: false, queryWords: terms };
+
     var tokenSets = all.map(function (c) { return words(c.text); });
-    var df = {};
+    var n = tokenSets.length;
+    var totalLength = tokenSets.reduce(function (sum, tokens) { return sum + tokens.length; }, 0);
+    var avgdl = totalLength / Math.max(1, n);
+    var df = Object.create(null);
     terms.forEach(function (term) {
-      df[term] = tokenSets.reduce(function (n, ts) { return n + (ts.indexOf(term) >= 0 ? 1 : 0); }, 0);
+      df[term] = tokenSets.reduce(function (count, tokens) {
+        return count + (tokens.indexOf(term) >= 0 ? 1 : 0);
+      }, 0);
     });
+
+    // Standard BM25 (Robertson/Sparck Jones IDF, k1=1.2, b=0.75),
+    // with conservative exact-phrase and full-query coverage boosts.
+    var normalizedQuery = normalize(query).replace(/[^a-z0-9\u0621-\u063a\u0641-\u064a]+/g, ' ').trim();
+    var phraseTokens = normalizedQuery.split(/\s+/).filter(function (t) { return t && !STOP.has(t); });
+    var phrase = phraseTokens.join(' ');
     var scored = all.map(function (chunk, i) {
-      var ts = tokenSets[i], score = 0, matched = 0;
+      var tokens = tokenSets[i], length = tokens.length;
+      var frequencies = Object.create(null);
+      tokens.forEach(function (token) { frequencies[token] = (frequencies[token] || 0) + 1; });
+      var score = 0, matched = 0;
       terms.forEach(function (term) {
-        var tf = ts.reduce(function (n, token) { return n + (token === term ? 1 : 0); }, 0);
-        if (tf) {
-          matched++;
-          score += Math.log(1 + (all.length + 0.5) / (df[term] + 0.5)) * (1 + Math.log(tf)) * (term.length >= 5 ? 1.15 : 1);
-        }
+        var tf = frequencies[term] || 0;
+        if (!tf) return;
+        matched++;
+        var documentFrequency = df[term] || 0;
+        var idf = Math.log(1 + (n - documentFrequency + 0.5) / (documentFrequency + 0.5));
+        var k1 = 1.2, b = 0.75;
+        var denominator = tf + k1 * (1 - b + b * length / Math.max(1, avgdl));
+        var learnedWeight = termWeights && Object.prototype.hasOwnProperty.call(termWeights, term)
+          ? Number(termWeights[term]) : 1;
+        if (!Number.isFinite(learnedWeight)) learnedWeight = 1;
+        learnedWeight = Math.max(0.75, Math.min(1.5, learnedWeight));
+        score += idf * (tf * (k1 + 1)) / denominator * learnedWeight;
       });
-      var required = terms.length >= 3 ? 2 : 1;
-      if (matched < required || (terms.length > 1 && matched / terms.length < 0.3)) score = 0;
-      return {chunk: chunk, score: score, matched: matched};
+      var matchedRatio = matched / Math.max(1, terms.length);
+      if (matched < 1 || (terms.length >= 4 && matchedRatio < 0.16)) score = 0;
+      if (score > 0 && phrase.length >= 5 && normalize(chunk.text).indexOf(phrase) >= 0) score *= 1.35;
+      if (score > 0 && matchedRatio >= 0.75) score *= 1.12;
+      return {chunk: chunk, score: score, matched: matched, matchedRatio: matchedRatio};
     }).filter(function (x) { return x.score > 0; })
-      .sort(function (a, b) { return b.score - a.score || b.matched - a.matched || a.chunk.offset - b.chunk.offset; });
-    // Avoid showing overlapping pieces of the same page as multiple independent citations.
-    var pages = new Set();
-    var refs = [];
-    scored.forEach(function (x) {
-      var key = x.chunk.docId + ':' + x.chunk.page;
-      if (refs.length < limit && !pages.has(key)) { pages.add(key); refs.push(x.chunk); }
+      .sort(function (a, b) { return b.score - a.score || b.matchedRatio - a.matchedRatio || b.matched - a.matched || a.chunk.offset - b.chunk.offset; });
+
+    // Avoid overlapping chunks from the same source page as separate citations.
+    var pages = new Set(), refs = [];
+    scored.forEach(function (item) {
+      var key = item.chunk.docId + ':' + item.chunk.page;
+      if (refs.length < limit && !pages.has(key)) { pages.add(key); refs.push(item.chunk); }
     });
     return {references: refs, overview: false, queryWords: terms};
   }
@@ -154,5 +244,5 @@
     return chars.slice(0, Math.max(0, max - 1)).join('').trimEnd() + '…';
   }
 
-  return {normalize: normalize, words: words, extractPdfText: extractPdfText, chunksForDocument: chunksForDocument, search: search, shorten: shorten};
+  return {normalize: normalize, words: words, expandQueryTerms: expandQueryTerms, extractPdfText: extractPdfText, chunksForDocument: chunksForDocument, search: search, shorten: shorten};
 }));

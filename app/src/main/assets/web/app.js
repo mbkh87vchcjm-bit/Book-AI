@@ -21,6 +21,18 @@
   function isBusy() { return processing; }
   function activeSession() { return state.sessions.find(function (s) { return s.id === state.activeId; }) || state.sessions[0]; }
 
+  function sanitizeTermWeights(input) {
+    var output = {};
+    if (!input || typeof input !== 'object' || Array.isArray(input)) return output;
+    Object.keys(input).slice(0, 1000).forEach(function (term) {
+      if (typeof term !== 'string' || !term || term.length > 80) return;
+      var weight = Number(input[term]);
+      if (!Number.isFinite(weight)) return;
+      output[term] = Math.max(0.75, Math.min(1.5, weight));
+    });
+    return output;
+  }
+
   function loadState() {
     var raw = '';
     try {
@@ -31,6 +43,7 @@
           return !s || typeof s.id !== 'string' || !Array.isArray(s.documents) || !Array.isArray(s.messages);
         })) throw new Error('Invalid saved state');
         obj.settings = Object.assign({}, defaults, obj.settings || {});
+        obj.learning = {termWeights: sanitizeTermWeights(obj.learning && obj.learning.termWeights)};
         if (!obj.sessions.some(function (s) { return s.id === obj.activeId; })) obj.activeId = obj.sessions[0].id;
         return obj;
       }
@@ -40,7 +53,7 @@
       toast('تعذّر قراءة البيانات المحفوظة. أوقفنا الحفظ حتى لا تُستبدل.');
     }
     var s = newSession();
-    return {version: 1, activeId: s.id, sessions: [s], settings: Object.assign({}, defaults)};
+    return {version: 1, activeId: s.id, sessions: [s], settings: Object.assign({}, defaults), learning: {termWeights: {}}};
   }
   function saveState() {
     if (storageBlocked) { toast('الحفظ متوقف لحماية بياناتك السابقة غير المقروءة.'); return false; }
@@ -129,13 +142,55 @@
     else return '';
     return '<div class="origin-label ' + esc(css) + '">' + icon(msg.origin === 'source' || msg.origin === 'extract' ? 'book' : 'spark') + esc(text) + '</div>';
   }
+  function recordMessageFeedback(messageId, rating) {
+    if (rating !== 'helpful' && rating !== 'unhelpful') return;
+    var session = activeSession();
+    var message = session.messages.find(function (item) { return item.id === messageId; });
+    if (!message || message.role !== 'assistant' || message.origin !== 'source' || !Array.isArray(message.queryTerms) || !message.queryTerms.length) return;
+    if (message.feedback === rating) { toast('هذا التقييم مسجل بالفعل.'); return; }
+
+    if (!state.learning || typeof state.learning !== 'object') state.learning = {termWeights: {}};
+    var previousWeights = sanitizeTermWeights(state.learning.termWeights);
+    var nextWeights = Object.assign({}, previousWeights);
+    var previousFeedback = message.feedback || null;
+    var previousDirection = previousFeedback === 'helpful' ? 1 : (previousFeedback === 'unhelpful' ? -1 : 0);
+    var nextDirection = rating === 'helpful' ? 1 : -1;
+    var delta = (nextDirection - previousDirection) * 0.05;
+
+    Array.from(new Set(message.queryTerms)).slice(0, 30).forEach(function (term) {
+      if (typeof term !== 'string' || !term || term.length > 80) return;
+      if (!Object.prototype.hasOwnProperty.call(nextWeights, term) && Object.keys(nextWeights).length >= 1000) {
+        delete nextWeights[Object.keys(nextWeights)[0]];
+      }
+      var current = Object.prototype.hasOwnProperty.call(nextWeights, term) ? Number(nextWeights[term]) : 1;
+      if (!Number.isFinite(current)) current = 1;
+      nextWeights[term] = Math.max(0.75, Math.min(1.5, current + delta));
+    });
+
+    message.feedback = rating;
+    state.learning.termWeights = nextWeights;
+    if (!saveState()) {
+      message.feedback = previousFeedback;
+      state.learning.termWeights = previousWeights;
+      return;
+    }
+    renderMessages();
+    toast(rating === 'helpful'
+      ? 'حُفظ تقييمك؛ سيؤثر تدريجيًا في ترتيب نتائج البحث على هذا الجهاز.'
+      : 'حُفظ تقييمك؛ خُفّض وزن مصطلحات هذا السؤال محليًا. يمكنك تغيير التقييم.');
+  }
+
   function renderMessages() {
     var session = activeSession();
     $('welcome').hidden = session.messages.length > 0;
     $('messages').innerHTML = session.messages.map(function (m) {
       var user = m.role === 'user';
       var body = m.text ? messageText(m.text) : '';
-      return '<article class="message ' + (user ? 'user' : 'assistant') + '" data-message-id="' + esc(m.id) + '"><div class="' + (user ? 'user-avatar' : 'assistant-avatar') + '">' + (user ? 'أنت' : icon('spark')) + '</div><div class="message-body"><div class="message-meta"><strong>' + (user ? 'أنت' : 'مداد') + '</strong>' + '</div><div class="message-text" dir="auto">' + body + '</div>' + (!user ? originMarkup(m) + refMarkup(m) + '<div class="message-actions"><button data-copy="' + esc(m.id) + '">' + icon('copy') + ' نسخ</button></div>' : '') + '</div></article>';
+      var feedback = (!user && m.origin === 'source' && Array.isArray(m.queryTerms) && m.queryTerms.length)
+        ? '<button class="feedback" data-feedback="helpful" data-message="' + esc(m.id) + '" aria-pressed="' + (m.feedback === 'helpful' ? 'true' : 'false') + '">مفيد</button>' +
+          '<button class="feedback" data-feedback="unhelpful" data-message="' + esc(m.id) + '" aria-pressed="' + (m.feedback === 'unhelpful' ? 'true' : 'false') + '">لم يساعد</button>'
+        : '';
+      return '<article class="message ' + (user ? 'user' : 'assistant') + '" data-message-id="' + esc(m.id) + '"><div class="' + (user ? 'user-avatar' : 'assistant-avatar') + '">' + (user ? 'أنت' : icon('spark')) + '</div><div class="message-body"><div class="message-meta"><strong>' + (user ? 'أنت' : 'مداد') + '</strong>' + '</div><div class="message-text" dir="auto">' + body + '</div>' + (!user ? originMarkup(m) + refMarkup(m) + '<div class="message-actions">' + feedback + '<button data-copy="' + esc(m.id) + '">' + icon('copy') + ' نسخ</button></div>' : '') + '</div></article>';
     }).join('');
     $('messages').querySelectorAll('[data-reference]').forEach(function (el) { el.onclick = function () { openReference(el.dataset.message, Number(el.dataset.reference)); }; });
     $('messages').querySelectorAll('[data-copy]').forEach(function (el) { el.onclick = function () {
@@ -144,6 +199,9 @@
       if (Native && Native.copyText) { Native.copyText(msg.text); toast('تم نسخ النص.'); }
       else if (navigator.clipboard) navigator.clipboard.writeText(msg.text).then(function () { toast('تم نسخ النص.'); }).catch(function () { toast('تعذّر النسخ.'); });
     }; });
+    $('messages').querySelectorAll('[data-feedback]').forEach(function (el) {
+      el.onclick = function () { recordMessageFeedback(el.dataset.message, el.dataset.feedback); };
+    });
     $('typing').hidden = !processing;
     if (processing && !cancelProcessing) $('typing-text').textContent = 'أستخرج النص من المصدر';
     $('send-btn').hidden = processing;
@@ -374,8 +432,8 @@
     $('question').value = ''; $('question').style.height = '';
     try {
       var reply = A.answer({question: question, documents: session.documents, priorQuestion: prior && prior.text,
-        mode: state.settings.mode, allowMath: state.settings.allowMath, maxSentences: state.settings.maxSentences});
-      session.messages.push({id: uid(), role: 'assistant', text: reply.text, origin: reply.origin, references: reply.references});
+        mode: state.settings.mode, allowMath: state.settings.allowMath, maxSentences: state.settings.maxSentences, termWeights: state.learning && state.learning.termWeights});
+      session.messages.push({id: uid(), role: 'assistant', text: reply.text, origin: reply.origin, references: reply.references, queryTerms: reply.queryTerms});
     } catch (_) {
       session.messages.push({id: uid(), role: 'assistant', text: 'تعذّر تحليل هذا السؤال محليًا. جرّب صياغة أبسط.', origin: 'error', references: []});
     }
