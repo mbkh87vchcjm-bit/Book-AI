@@ -11,9 +11,9 @@ const {chromium} = require('playwright-core');
 
 const web = path.resolve(__dirname, '../app/src/main/assets/web');
 const fixture = name => path.resolve(__dirname, 'fixtures', name);
-const executablePath = process.env.CHROMIUM_PATH;
+const executablePath = process.env.CHROMIUM_PATH || chromium.executablePath();
 const openBrowsers = new Set();
-if (!executablePath) throw new Error('Set CHROMIUM_PATH to a local Chromium executable.');
+if (!executablePath || !fs.existsSync(executablePath)) throw new Error('Install Playwright Chromium or set CHROMIUM_PATH to a local executable.');
 
 function server() {
   return new Promise(resolve => {
@@ -33,7 +33,7 @@ function server() {
 }
 async function browserPage(url, init) {
   const browser = await chromium.launch({executablePath, headless: true,
-    args: ['--no-sandbox', '--no-zygote', '--single-process', '--disable-dev-shm-usage', '--allow-file-access-from-files']});
+    args: ['--no-sandbox', '--no-zygote', '--disable-dev-shm-usage', '--allow-file-access-from-files']});
   openBrowsers.add(browser);
   const page = await browser.newPage({viewport: {width: 390, height: 844}});
   const errors = [];
