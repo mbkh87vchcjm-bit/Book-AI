@@ -1,6 +1,6 @@
 (function () {
   'use strict';
-  var E = window.MidadEngine, A = window.MidadAnswer, OCR = window.MidadOcr, Knowledge = window.MidadKnowledgeGraph;
+  var E = window.MidadEngine, A = window.MidadAnswer, OCR = window.MidadOcr, Knowledge = window.MidadKnowledgeGraph, Neural = window.MidadNeural;
   var $ = function (id) { return document.getElementById(id); };
   var Native = window.NativeBridge || null;
   var STORAGE_KEY = 'midad-state-v1';
@@ -8,16 +8,17 @@
   var MAX_TEXT_CHARS = 3000000;
   var MAX_PAGES = 500;
   var MAX_OCR_PAGES = 15;
-  var defaults = {mode: 'flexible', allowMath: true, maxSentences: 3, ocrEnabled: true};
+  var defaults = {mode: 'flexible', allowMath: true, maxSentences: 8, ocrEnabled: true};
   var state;
   var processing = false, cancelProcessing = false, savingWarning = false, storageBlocked = false, modalKind = null, toastTimer;
+  var processingLabel = 'أحلل السؤال وأركّب الأدلة';
 
   function uid() { return Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 9); }
   function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return {'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'}[c]; }); }
   function icon(name) { return '<svg aria-hidden="true"><use href="#i-' + name + '"></use></svg>'; }
   function fmt(n) { try { return Number(n).toLocaleString('ar'); } catch (_) { return String(n); } }
   function messageText(text) { return esc(text).replace(/\*\*([^*\n]{1,200})\*\*/g, '<strong>$1</strong>'); }
-  function newSession() { return {id: uid(), title: 'دفتر جديد', created: Date.now(), documents: [], messages: [], knowledge: []}; }
+  function newSession() { return {id: uid(), title: 'دفتر جديد', created: Date.now(), documents: [], messages: [], knowledge: [], semanticModelData: null, semanticModelStatus: 'pending'}; }
   function isBusy() { return processing; }
   function activeSession() { return state.sessions.find(function (s) { return s.id === state.activeId; }) || state.sessions[0]; }
 
@@ -43,8 +44,14 @@
           return !s || typeof s.id !== 'string' || !Array.isArray(s.documents) || !Array.isArray(s.messages);
         })) throw new Error('Invalid saved state');
         obj.settings = Object.assign({}, defaults, obj.settings || {});
+        var savedDepth = Number(obj.settings.maxSentences);
+        obj.settings.maxSentences = Number.isFinite(savedDepth) && savedDepth >= 5 ? Math.max(5, Math.min(12, savedDepth)) : 8;
         obj.learning = {termWeights: sanitizeTermWeights(obj.learning && obj.learning.termWeights)};
-        obj.sessions.forEach(function (session) { if (!Array.isArray(session.knowledge)) session.knowledge = []; });
+        obj.sessions.forEach(function (session) {
+          if (!Array.isArray(session.knowledge)) session.knowledge = [];
+          if (!session.semanticModelStatus) session.semanticModelStatus = session.semanticModelData ? 'ready' : 'pending';
+          if (session.semanticModelData && Neural && !Neural.restore(session.semanticModelData)) { session.semanticModelData = null; session.semanticModelStatus = 'pending'; }
+        });
         if (!obj.sessions.some(function (s) { return s.id === obj.activeId; })) obj.activeId = obj.sessions[0].id;
         return obj;
       }
@@ -212,7 +219,7 @@
       el.onclick = function () { recordMessageFeedback(el.dataset.message, el.dataset.feedback); };
     });
     $('typing').hidden = !processing;
-    if (processing && !cancelProcessing) $('typing-text').textContent = 'أستخرج النص من المصدر';
+    if (processing && !cancelProcessing) $('typing-text').textContent = processingLabel;
     $('send-btn').hidden = processing;
     $('stop-btn').hidden = !processing;
     $('question').disabled = processing;
@@ -339,16 +346,16 @@
   function openSettings() {
     if (processing) { toast('انتظر انتهاء قراءة المصدر أولًا.'); return; }
     var s = state.settings;
-    var content = '<section class="settings-section"><h3>المحرّك المحلي</h3><p>لا يحتاج التطبيق إلى استيراد نموذج. ينتقي جملًا من المراجع ويجري عمليات حسابية ومعادلات خطية بسيطة بقواعد مبرمجة؛ ليس نموذجًا لغويًا عامًا.</p></section>' +
+    var content = '<section class="settings-section"><h3>المحرّك المحلي</h3><p>يستخدم البحث الإحصائي BM25، وقواعد تركيب الأدلة، وقاعدة معرفة موثقة. ويمكنه تدريب شبكة دلالية صغيرة من الصفر على نصوص هذا الدفتر للمساعدة في ترتيب المقاطع. لا يحتوي على نموذج لغوي جاهز ولا يولّد معرفة عامة خارج المراجع.</p><p class="field-help">حالة التدريب: ' + (activeSession().semanticModelStatus === 'ready' ? 'مدرّب محليًا' : (activeSession().semanticModelStatus === 'insufficient' ? 'بيانات غير كافية' : 'سيبدأ عند أول سؤال')) + '</p></section>' +
       '<section class="settings-section"><h3>قاعدة المعرفة الموثقة</h3><p>استخرج علاقات مرشّحة من جمل المراجع الواضحة. راجع النص ورقم الصفحة قبل اعتماد أي حقيقة.</p><button class="button-secondary" id="knowledge-center-btn" style="width:100%">فتح مركز المعرفة (' + fmt(Knowledge ? Knowledge.stats(activeSession().knowledge || []).total : 0) + ')</button></section>' +
       '<section class="settings-section"><h3>القيود وطريقة الإجابة</h3><div class="setting-row"><div><strong>المصادر فقط</strong><small>يعرض جملًا من المراجع فقط، ولا يحسب من السؤال بصورة مستقلة.</small></div><label class="switch"><input type="checkbox" id="strict-mode" ' + (s.mode === 'strict' ? 'checked' : '') + '><span></span></label></div>' +
       '<div class="setting-row"><div><strong>السماح بالحساب المحلي</strong><small>للعمليات والمعادلات الخطية البسيطة عند إيقاف وضع المصادر فقط.</small></div><label class="switch"><input type="checkbox" id="allow-math" ' + (s.allowMath !== false ? 'checked' : '') + '><span></span></label></div>' +
-      '<label class="field"><span>عدد الجمل المنتقاة</span><select id="max-sentences"><option value="1">جملة واحدة</option><option value="3">٣ جمل</option><option value="5">٥ جمل</option></select></label></section>' +
+      '<label class="field"><span>مستوى تفصيل الإجابة</span><select id="max-sentences"><option value="5">متوسط — حتى ٥ أدلة</option><option value="8">تفصيلي — حتى ٨ أدلة</option><option value="12">موسع — حتى ١٢ دليلًا</option></select></label></section>' +
       '<section class="settings-section"><h3>قراءة الصفحات المصوّرة</h3><div class="setting-row"><div><strong>محاولة قراءة النص المطبوع من الصورة</strong><small>قوالب وقاموس محليان، حتى ١٥ صفحة مصوّرة لكل ملف.</small></div><label class="switch"><input type="checkbox" id="ocr-enabled" ' + (s.ocrEnabled !== false ? 'checked' : '') + '><span></span></label></div><p class="field-help">تجريبية ومحدودة الخطوط؛ قد تخطئ أو لا تتعرف على كلمات. لا تفهم الرسومات أو الخط اليدوي. صحّح النص بمقارنته بصورة الصفحة.</p></section>' +
       '<section class="settings-section"><h3>الخصوصية</h3><p>المصادر والمحادثات محلية، ولا يطلب التطبيق صلاحية الإنترنت. البحث والتلخيص اقتباسيان، ولا يتعامل المحرك مع كل أنواع الأسئلة.</p></section>';
     openModal(modalShell('الإعدادات والتحكم', 'اضبط القيود المناسبة لك.', content, '<button class="button-secondary" id="cancel-settings">إلغاء</button><button class="button-primary" id="save-settings">حفظ الإعدادات</button>'), 'settings');
     $('knowledge-center-btn').onclick = function () { closeModal(); openKnowledgeCenter(); };
-    $('max-sentences').value = String(s.maxSentences || 3);
+    $('max-sentences').value = String(Math.max(5, Math.min(12, Number(s.maxSentences) || 8)));
     $('cancel-settings').onclick = closeModal;
     $('save-settings').onclick = function () {
       state.settings = {mode: $('strict-mode').checked ? 'strict' : 'flexible', allowMath: $('allow-math').checked, maxSentences: Number($('max-sentences').value), ocrEnabled: $('ocr-enabled').checked};
@@ -491,11 +498,18 @@
       try {
         var result = await extractFile(fileList[i]);
         var previousKnowledge = Array.isArray(session.knowledge) ? session.knowledge : [];
+        var previousModelData = session.semanticModelData || null;
+        var previousModelStatus = session.semanticModelStatus || 'pending';
         session.documents.push(result.doc);
         if (Knowledge) session.knowledge = Knowledge.merge(previousKnowledge, Knowledge.extractDocument(result.doc));
+        // A new source changes the training corpus; discard this notebook's derived model.
+        session.semanticModelData = null;
+        session.semanticModelStatus = 'pending';
         if (!saveState()) {
           session.documents.pop();
           session.knowledge = previousKnowledge;
+          session.semanticModelData = previousModelData;
+          session.semanticModelStatus = previousModelStatus;
           notices.push(fileList[i].name + ': تعذّر حفظ المصدر.');
           continue;
         }
@@ -510,7 +524,7 @@
     if ($('import-ok')) $('import-ok').onclick = closeModal;
   }
 
-  function sendQuestion(raw) {
+  async function sendQuestion(raw) {
     var question = String(raw == null ? $('question').value : raw).trim();
     if (!question || isBusy()) return;
     if (question.length > 3000) { toast('السؤال طويل جدًا؛ اختصره ثم أعد المحاولة.'); return; }
@@ -519,14 +533,52 @@
     session.messages.push({id: uid(), role: 'user', text: question});
     if (session.title === 'دفتر جديد') session.title = E.shorten(question.replace(/\s+/g, ' '), 29);
     $('question').value = ''; $('question').style.height = '';
+    processing = true;
+    processingLabel = 'أحلل السؤال وأرتّب الأدلة';
+    renderAll(); scrollBottom();
     try {
+      var semanticModel = Neural && session.semanticModelData ? Neural.restore(session.semanticModelData) : null;
+      if (Neural && session.documents.length && !semanticModel && session.semanticModelStatus !== 'insufficient') {
+        processingLabel = 'أدرّب شبكة دلالية صغيرة من كتب هذا الدفتر';
+        renderMessages();
+        try {
+          var trainedModel = await Neural.train(session.documents, {
+            dimension: 24, window: 2, negatives: 2, epochs: 1,
+            maxVocabulary: 1600, maxTokens: 24000, minCount: 2, maxChars: 360000
+          });
+          if (trainedModel) {
+            session.semanticModelData = trainedModel.exportData();
+            session.semanticModelStatus = 'ready';
+            semanticModel = trainedModel;
+            toast('اكتمل التدريب المحلي على نصوص دفترك. ستساعد الشبكة في ترتيب المقاطع المتشابهة.');
+          } else {
+            session.semanticModelData = null;
+            session.semanticModelStatus = 'insufficient';
+            toast('المراجع الحالية قصيرة أو قليلة لبناء شبكة دلالية مستقرة؛ سيستمر البحث النصي المعتاد.');
+          }
+          saveState();
+        } catch (trainingError) {
+          session.semanticModelData = null;
+          session.semanticModelStatus = 'insufficient';
+          toast('تعذّر التدريب العصبي المحلي؛ سيعمل البحث النصي دون تعطيل الإجابة.');
+        }
+      }
+      processingLabel = 'أحلل السؤال وأركّب إجابة من الأدلة';
       var reply = A.answer({question: question, documents: session.documents, priorQuestion: prior && prior.text,
-        mode: state.settings.mode, allowMath: state.settings.allowMath, maxSentences: state.settings.maxSentences, termWeights: state.learning && state.learning.termWeights, knowledgeFacts: session.knowledge || []});
-      session.messages.push({id: uid(), role: 'assistant', text: reply.text, origin: reply.origin, references: reply.references, queryTerms: reply.queryTerms});
+        mode: state.settings.mode, allowMath: state.settings.allowMath,
+        maxSentences: state.settings.maxSentences || 8,
+        termWeights: state.learning && state.learning.termWeights,
+        knowledgeFacts: session.knowledge || [], semanticModel: semanticModel});
+      session.messages.push({id: uid(), role: 'assistant', text: reply.text, origin: reply.origin,
+        references: reply.references, queryTerms: reply.queryTerms, intent: reply.intent,
+        semanticUsed: !!reply.semanticUsed, evidenceCount: reply.evidenceCount || 0});
     } catch (_) {
-      session.messages.push({id: uid(), role: 'assistant', text: 'تعذّر تحليل هذا السؤال محليًا. جرّب صياغة أبسط.', origin: 'error', references: []});
+      session.messages.push({id: uid(), role: 'assistant', text: 'تعذّر تحليل هذا السؤال محليًا. جرّب صياغة أخرى أو راجع الملف المضاف.', origin: 'error', references: []});
+    } finally {
+      processing = false;
+      processingLabel = 'أحلل السؤال وأركّب الأدلة';
+      saveState(); renderAll(); scrollBottom();
     }
-    saveState(); renderAll(); scrollBottom();
   }
 
   function openSessionOptions() {
