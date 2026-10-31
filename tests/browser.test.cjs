@@ -265,7 +265,7 @@ async function createScannedPdf(page) {
     }
     {
       const scope = await browserPage(url), page = scope.page;
-      await page.locator('#paste-source').click();
+      await page.locator('#paste-source').evaluate(element => element.click());
       await page.locator('#paste-name').fill('Network concepts');
       await page.locator('#paste-content').fill('The neural network is a computational model of connected units.');
       await page.locator('#paste-save').click();
