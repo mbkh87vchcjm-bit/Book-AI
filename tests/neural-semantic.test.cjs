@@ -20,6 +20,9 @@ test('trains a small neural model from supplied local documents only', async () 
   assert.ok(model.vocabularySize >= 12);
   assert.ok(model.trainedTokens > 0);
   assert.ok(model.trainedPairs > 0);
+  const related = model.similarity('router', 'routing');
+  const unrelated = model.similarity('router', 'banana');
+  assert.ok(related > unrelated + 0.05, 'related context words should rank closer than unrelated-domain words');
   assert.ok(model.similarity('router packet network', 'routing packet network') >= 0);
 });
 
