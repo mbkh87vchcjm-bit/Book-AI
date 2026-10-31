@@ -21,3 +21,5 @@
 @font-face{font-family:OcrDejaVu;src:url('ocr-fonts/DejaVuSans.ttf') format('truetype')}
 
 .ocr-preview{display:block;max-width:100%;max-height:50vh;object-fit:contain;margin:12px auto;border:1px solid #dce6db;border-radius:8px;background:#fff}
+
+.knowledge-fact{border:1px solid #e7eee6;border-radius:10px;padding:11px;margin:9px 0;background:#fafcf9}.knowledge-fact strong{font-size:11px;line-height:1.7;color:#456450}.knowledge-fact .knowledge-meta{font-size:9px;color:#91a297;line-height:1.7;margin:5px 0}.knowledge-fact .knowledge-excerpt{font-size:10px;color:#65786d;line-height:1.8;margin:5px 0}.knowledge-fact .model-actions{display:flex;gap:7px;margin-top:8px}

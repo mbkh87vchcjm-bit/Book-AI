@@ -263,6 +263,47 @@ async function createScannedPdf(page) {
       assert.match(await scope.page.locator('#toast').innerText(), /الحفظ متوقف/);
       await finish(scope, 'Unreadable saved data is not overwritten');
     }
+    {
+      const scope = await browserPage(url), page = scope.page;
+      await page.locator('#paste-source').click();
+      await page.locator('#paste-name').fill('Network concepts');
+      await page.locator('#paste-content').fill('The neural network is a computational model of connected units.');
+      await page.locator('#paste-save').click();
+      await page.locator('#settings-btn').click();
+      await page.locator('#knowledge-center-btn').click();
+      assert.match(await page.locator('.modal').innerText(), /مرشحة للمراجعة/);
+      assert.match(await page.locator('.modal').innerText(), /neural network/);
+      assert.equal(await page.evaluate(() => {
+        const state = JSON.parse(localStorage.getItem('midad-state-v1'));
+        return window.MidadKnowledgeGraph.search(state.sessions[0].knowledge, 'What is a neural network?', 5).length;
+      }), 0);
+      await page.locator('[data-kg-review="user-confirmed"]').click();
+      const trusted = await page.evaluate(() => {
+        const state = JSON.parse(localStorage.getItem('midad-state-v1'));
+        return window.MidadKnowledgeGraph.search(state.sessions[0].knowledge, 'What is a neural network?', 5);
+      });
+      assert.equal(trusted.length, 1);
+      assert.equal(trusted[0].fact.page, 1);
+      await page.locator('#knowledge-close').click();
+      const graphAnswer = await page.evaluate(() => {
+        const state = JSON.parse(localStorage.getItem('midad-state-v1'));
+        return window.MidadAnswer.answer({
+          documents: [],
+          knowledgeFacts: state.sessions[0].knowledge,
+          question: 'What is a neural network?',
+          mode: 'strict'
+        });
+      });
+      assert.equal(graphAnswer.origin, 'source');
+      assert.equal(graphAnswer.references[0].docName, 'Network concepts');
+      assert.equal(graphAnswer.references[0].page, 1);
+      await page.reload();
+      assert.equal(await page.evaluate(() => {
+        const state = JSON.parse(localStorage.getItem('midad-state-v1'));
+        return state.sessions[0].knowledge[0].status;
+      }), 'user-confirmed');
+      await finish(scope, 'Knowledge extraction, human review, grounded graph fallback and persistence');
+    }
   } finally {
     await Promise.all([...openBrowsers].map(browser => browser.close().catch(() => {})));
     await new Promise(resolve => localServer.close(resolve));

@@ -1,6 +1,6 @@
 (function () {
   'use strict';
-  var E = window.MidadEngine, A = window.MidadAnswer, OCR = window.MidadOcr;
+  var E = window.MidadEngine, A = window.MidadAnswer, OCR = window.MidadOcr, Knowledge = window.MidadKnowledgeGraph;
   var $ = function (id) { return document.getElementById(id); };
   var Native = window.NativeBridge || null;
   var STORAGE_KEY = 'midad-state-v1';
@@ -17,7 +17,7 @@
   function icon(name) { return '<svg aria-hidden="true"><use href="#i-' + name + '"></use></svg>'; }
   function fmt(n) { try { return Number(n).toLocaleString('ar'); } catch (_) { return String(n); } }
   function messageText(text) { return esc(text).replace(/\*\*([^*\n]{1,200})\*\*/g, '<strong>$1</strong>'); }
-  function newSession() { return {id: uid(), title: 'دفتر جديد', created: Date.now(), documents: [], messages: []}; }
+  function newSession() { return {id: uid(), title: 'دفتر جديد', created: Date.now(), documents: [], messages: [], knowledge: []}; }
   function isBusy() { return processing; }
   function activeSession() { return state.sessions.find(function (s) { return s.id === state.activeId; }) || state.sessions[0]; }
 
@@ -44,6 +44,7 @@
         })) throw new Error('Invalid saved state');
         obj.settings = Object.assign({}, defaults, obj.settings || {});
         obj.learning = {termWeights: sanitizeTermWeights(obj.learning && obj.learning.termWeights)};
+        obj.sessions.forEach(function (session) { if (!Array.isArray(session.knowledge)) session.knowledge = []; });
         if (!obj.sessions.some(function (s) { return s.id === obj.activeId; })) obj.activeId = obj.sessions[0].id;
         return obj;
       }
@@ -120,7 +121,15 @@
       var id = el.dataset.delete, doc = session.documents.find(function (d) { return d.id === id; });
       if (!doc) return;
       confirmAction('حذف المصدر', 'سيُحذف النص المستخرج من هذا الدفتر. ستبقى الاقتباسات المحفوظة في المحادثة.', 'حذف المصدر', function () {
-        session.documents = session.documents.filter(function (d) { return d.id !== id; }); saveState(); renderAll(); toast('تم حذف المصدر.');
+        var previousDocuments = session.documents, previousKnowledge = session.knowledge;
+        session.documents = session.documents.filter(function (d) { return d.id !== id; });
+        if (Array.isArray(session.knowledge)) session.knowledge = session.knowledge.filter(function (fact) { return fact.docId !== id; });
+        if (!saveState()) {
+          session.documents = previousDocuments;
+          session.knowledge = previousKnowledge;
+          return;
+        }
+        renderAll(); toast('تم حذف المصدر وحقائقه المرتبطة.');
       }, true);
     }; });
   }
@@ -247,8 +256,21 @@
     $('edit-save').onclick = function () {
       var text = $('page-edit').value.trim();
       if (text.length > MAX_TEXT_CHARS) { toast('النص كبير جدًا.'); return; }
-      var old = page.text, wasEdited = page.edited; page.text = text; page.edited = true;
-      if (!saveState()) { page.text = old; page.edited = wasEdited; return; }
+      var old = page.text, wasEdited = page.edited, session = activeSession();
+      var oldKnowledge = Array.isArray(session.knowledge) ? session.knowledge : [];
+      page.text = text; page.edited = true;
+      if (Knowledge) {
+        var retained = oldKnowledge.filter(function (fact) {
+          return fact.docId !== id || Number(fact.page) !== Number(pageNumber);
+        });
+        session.knowledge = Knowledge.merge(retained, Knowledge.extractPage(doc, page));
+      }
+      if (!saveState()) {
+        page.text = old;
+        page.edited = wasEdited;
+        session.knowledge = oldKnowledge;
+        return;
+      }
       openDocument(id, pageNumber); toast('حُفظ التصحيح.');
     };
   }
@@ -264,16 +286,68 @@
     openModal(modalShell(ref.docName, 'المصدر ' + fmt(index + 1) + ' · ' + label, content, footer), 'reference');
     if ($('open-full-page')) $('open-full-page').onclick = function () { openDocument(ref.docId, ref.page); };
   }
+  function reviewKnowledgeFact(factId, status) {
+    var session = activeSession();
+    if (!Knowledge || !Array.isArray(session.knowledge)) return;
+    var fact = session.knowledge.find(function (item) { return item.id === factId; });
+    if (!fact) return;
+    var previousStatus = fact.status, previousReviewedAt = fact.reviewedAt;
+    if (!Knowledge.applyReview(session.knowledge, factId, status)) return;
+    if (!saveState()) {
+      fact.status = previousStatus;
+      fact.reviewedAt = previousReviewedAt;
+      return;
+    }
+    openKnowledgeCenter();
+    toast(status === 'user-confirmed' ? 'اعتمدت الحقيقة مع الاحتفاظ بمرجعها.' :
+      (status === 'rejected' ? 'رُفضت الحقيقة المرشحة.' : 'أُعيدت الحقيقة إلى المراجعة.'));
+  }
+
+  function openKnowledgeCenter() {
+    if (processing) { toast('انتظر حتى تنتهي العملية الحالية.'); return; }
+    var session = activeSession();
+    if (!Array.isArray(session.knowledge)) session.knowledge = [];
+    var facts = session.knowledge.slice().reverse().slice(0, 50);
+    var counts = Knowledge ? Knowledge.stats(session.knowledge) : {total:0,candidate:0,confirmed:0,rejected:0};
+    var rows = facts.map(function (fact) {
+      var statusLabel = fact.status === 'user-confirmed' ? 'معتمدة' :
+        (fact.status === 'rejected' ? 'مرفوضة' : 'مرشحة للمراجعة');
+      var controls = fact.status === 'candidate'
+        ? '<button class="button-primary" data-kg-review="user-confirmed" data-kg-id="' + esc(fact.id) + '">اعتماد</button>' +
+          '<button class="button-secondary" data-kg-review="rejected" data-kg-id="' + esc(fact.id) + '">رفض</button>'
+        : '<button class="button-secondary" data-kg-review="candidate" data-kg-id="' + esc(fact.id) + '">إعادة للمراجعة</button>';
+      return '<article class="knowledge-fact"><strong dir="auto">' + esc(fact.subject) + ' — ' +
+        esc(Knowledge.predicateLabel(fact.predicate)) + ' — ' + esc(fact.object) + '</strong>' +
+        '<p class="knowledge-meta">المصدر: ' + esc(fact.docName) + ' · صفحة ' + fmt(fact.page) + ' · ' + statusLabel + '</p>' +
+        '<p class="knowledge-excerpt" dir="auto">' + esc(fact.excerpt) + '</p><div class="model-actions">' +
+        controls + '</div></article>';
+    }).join('');
+    var content = '<section class="settings-section"><h3>حالة قاعدة المعرفة</h3><p>إجمالي: ' + fmt(counts.total) +
+      ' · مرشحة: ' + fmt(counts.candidate) + ' · معتمدة: ' + fmt(counts.confirmed) + ' · مرفوضة: ' + fmt(counts.rejected) +
+      '</p><p class="field-help">الحقائق المستخرجة آليًا تبقى مرشّحة ولا تدخل في الإجابات قبل اعتمادها يدويًا. كل حقيقة تحتفظ بالمصدر ورقم الصفحة والنص الأصلي.</p></section>' +
+      '<section class="settings-section"><h3>الحقائق والعلاقات</h3>' +
+      (rows || '<p class="excerpt-note">لم تُستخرج علاقات بعد. أضف نصًا أو مرجعًا يحتوي تعريفات أو علاقات واضحة.</p>') +
+      '</section>';
+    openModal(modalShell('مركز المعرفة المحلية', session.title, content,
+      '<button class="button-primary" id="knowledge-close">إغلاق</button>'), 'knowledge-center');
+    $('knowledge-close').onclick = closeModal;
+    $('modal-root').querySelectorAll('[data-kg-review]').forEach(function (el) {
+      el.onclick = function () { reviewKnowledgeFact(el.dataset.kgId, el.dataset.kgReview); };
+    });
+  }
+
   function openSettings() {
     if (processing) { toast('انتظر انتهاء قراءة المصدر أولًا.'); return; }
     var s = state.settings;
     var content = '<section class="settings-section"><h3>المحرّك المحلي</h3><p>لا يحتاج التطبيق إلى استيراد نموذج. ينتقي جملًا من المراجع ويجري عمليات حسابية ومعادلات خطية بسيطة بقواعد مبرمجة؛ ليس نموذجًا لغويًا عامًا.</p></section>' +
+      '<section class="settings-section"><h3>قاعدة المعرفة الموثقة</h3><p>استخرج علاقات مرشّحة من جمل المراجع الواضحة. راجع النص ورقم الصفحة قبل اعتماد أي حقيقة.</p><button class="button-secondary" id="knowledge-center-btn" style="width:100%">فتح مركز المعرفة (' + fmt(Knowledge ? Knowledge.stats(activeSession().knowledge || []).total : 0) + ')</button></section>' +
       '<section class="settings-section"><h3>القيود وطريقة الإجابة</h3><div class="setting-row"><div><strong>المصادر فقط</strong><small>يعرض جملًا من المراجع فقط، ولا يحسب من السؤال بصورة مستقلة.</small></div><label class="switch"><input type="checkbox" id="strict-mode" ' + (s.mode === 'strict' ? 'checked' : '') + '><span></span></label></div>' +
       '<div class="setting-row"><div><strong>السماح بالحساب المحلي</strong><small>للعمليات والمعادلات الخطية البسيطة عند إيقاف وضع المصادر فقط.</small></div><label class="switch"><input type="checkbox" id="allow-math" ' + (s.allowMath !== false ? 'checked' : '') + '><span></span></label></div>' +
       '<label class="field"><span>عدد الجمل المنتقاة</span><select id="max-sentences"><option value="1">جملة واحدة</option><option value="3">٣ جمل</option><option value="5">٥ جمل</option></select></label></section>' +
       '<section class="settings-section"><h3>قراءة الصفحات المصوّرة</h3><div class="setting-row"><div><strong>محاولة قراءة النص المطبوع من الصورة</strong><small>قوالب وقاموس محليان، حتى ١٥ صفحة مصوّرة لكل ملف.</small></div><label class="switch"><input type="checkbox" id="ocr-enabled" ' + (s.ocrEnabled !== false ? 'checked' : '') + '><span></span></label></div><p class="field-help">تجريبية ومحدودة الخطوط؛ قد تخطئ أو لا تتعرف على كلمات. لا تفهم الرسومات أو الخط اليدوي. صحّح النص بمقارنته بصورة الصفحة.</p></section>' +
       '<section class="settings-section"><h3>الخصوصية</h3><p>المصادر والمحادثات محلية، ولا يطلب التطبيق صلاحية الإنترنت. البحث والتلخيص اقتباسيان، ولا يتعامل المحرك مع كل أنواع الأسئلة.</p></section>';
     openModal(modalShell('الإعدادات والتحكم', 'اضبط القيود المناسبة لك.', content, '<button class="button-secondary" id="cancel-settings">إلغاء</button><button class="button-primary" id="save-settings">حفظ الإعدادات</button>'), 'settings');
+    $('knowledge-center-btn').onclick = function () { closeModal(); openKnowledgeCenter(); };
     $('max-sentences').value = String(s.maxSentences || 3);
     $('cancel-settings').onclick = closeModal;
     $('save-settings').onclick = function () {
@@ -291,8 +365,16 @@
       var text = $('paste-content').value.trim(), name = $('paste-name').value.trim() || 'نص مضاف';
       if (!text) { toast('الصق النص أولًا.'); return; }
       if (text.length > MAX_TEXT_CHARS) { toast('النص كبير جدًا. الحد الأقصى ثلاثة ملايين حرف.'); return; }
-      activeSession().documents.push({id: uid(), name: name, type: 'text', pages: [{page: 1, text: text}], totalPages: 1});
-      if (!saveState()) { activeSession().documents.pop(); return; }
+      var session = activeSession();
+      var doc = {id: uid(), name: name, type: 'text', pages: [{page: 1, text: text}], totalPages: 1};
+      var previousKnowledge = Array.isArray(session.knowledge) ? session.knowledge : [];
+      session.documents.push(doc);
+      if (Knowledge) session.knowledge = Knowledge.merge(previousKnowledge, Knowledge.extractDocument(doc));
+      if (!saveState()) {
+        session.documents.pop();
+        session.knowledge = previousKnowledge;
+        return;
+      }
       closeModal(); renderAll(); toast('أُضيف النص إلى مصادرك.');
     };
   }
@@ -408,8 +490,15 @@
     for (var i = 0; i < fileList.length; i++) {
       try {
         var result = await extractFile(fileList[i]);
+        var previousKnowledge = Array.isArray(session.knowledge) ? session.knowledge : [];
         session.documents.push(result.doc);
-        if (!saveState()) { session.documents.pop(); notices.push(fileList[i].name + ': تعذّر حفظ المصدر.'); continue; }
+        if (Knowledge) session.knowledge = Knowledge.merge(previousKnowledge, Knowledge.extractDocument(result.doc));
+        if (!saveState()) {
+          session.documents.pop();
+          session.knowledge = previousKnowledge;
+          notices.push(fileList[i].name + ': تعذّر حفظ المصدر.');
+          continue;
+        }
         added++;
         if (result.warning) notices.push(fileList[i].name + ': ' + result.warning);
       } catch (err) { notices.push(fileList[i].name + ': ' + (err && err.message ? err.message : 'تعذّرت قراءة الملف.')); }
@@ -432,7 +521,7 @@
     $('question').value = ''; $('question').style.height = '';
     try {
       var reply = A.answer({question: question, documents: session.documents, priorQuestion: prior && prior.text,
-        mode: state.settings.mode, allowMath: state.settings.allowMath, maxSentences: state.settings.maxSentences, termWeights: state.learning && state.learning.termWeights});
+        mode: state.settings.mode, allowMath: state.settings.allowMath, maxSentences: state.settings.maxSentences, termWeights: state.learning && state.learning.termWeights, knowledgeFacts: session.knowledge || []});
       session.messages.push({id: uid(), role: 'assistant', text: reply.text, origin: reply.origin, references: reply.references, queryTerms: reply.queryTerms});
     } catch (_) {
       session.messages.push({id: uid(), role: 'assistant', text: 'تعذّر تحليل هذا السؤال محليًا. جرّب صياغة أبسط.', origin: 'error', references: []});
