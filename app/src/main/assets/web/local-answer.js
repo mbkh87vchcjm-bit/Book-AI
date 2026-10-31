@@ -275,7 +275,7 @@
     var source = sourceLabel(item);
     if (language === 'ar' && isEnglishSource(original) && TranslatorModule) {
       var translated = TranslatorModule.translateSentence(original, learningStore);
-      if (translated && translated.status === 'complete' && translated.translated &&
+      if (translated && translated.status === 'complete' && translated.structured === true && translated.translated &&
           translated.translated.indexOf('[') < 0) {
         return (index + 1) + '. ترجمة معجمية تقريبية: ' + translated.translated +
           '\n   النص الأصلي: ' + original + '\n   المصدر: ' + source;
@@ -313,11 +313,20 @@
       if (!selected.length && found.references && found.references.length) {
         selected = found.references.map(function (ref) { return {text: ref.text, ref: ref}; });
       }
+      // BM25 expansion may share generic terms such as "protocol" or "data".
+      // Keep only passages that contain the requested entity itself.
+      var entityTerms = E.words(entity);
+      if (entityTerms.length) {
+        selected = selected.filter(function (item) {
+          var passageTerms = new Set(E.words(item.text));
+          return entityTerms.some(function (term) { return passageTerms.has(term); });
+        });
+      }
       groups.push({entity: entity, items: selected});
     });
     if (!groups.some(function (group) { return group.items.length; })) return null;
 
-    var lines = ['**مقارنة موثقة من المراجع: ' + entities[0] + ' و' + entities[1] + '**'];
+    var lines = ['**مقارنة بين ' + entities[0] + ' و' + entities[1] + ' — أدلة المراجع**', '**الوصف والوظيفة والأدلة المتاحة**'];
     groups.forEach(function (group, groupIndex) {
       lines.push('\n**الطرف ' + (groupIndex + 1) + ': ' + group.entity + '**');
       if (!group.items.length) {
