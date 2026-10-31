@@ -136,3 +136,18 @@ test('answers from reviewed knowledge facts only and preserves source provenance
  assert.equal(approved.origin,'source');assert.equal(approved.references[0].docName,'Networks.pdf');
  assert.equal(approved.references[0].page,6);assert.match(approved.references[0].excerpt,/neural network/);
 });
+
+
+test('overview sampling preserves source-order endpoints when sentence lengths vary', () => {
+  const pages = Array.from({length:9}, (_, index) => ({
+    page:index + 1,
+    text: index === 0
+      ? 'The opening page contains a brief defining sentence.'
+      : index === 8
+        ? 'The final page contains a brief concluding sentence.'
+        : 'Page ' + (index + 1) + ' contains a much longer explanation with many additional scientific and technical details that should affect candidate scoring but must not change chronological overview sampling order.'
+  }));
+  const result = A.answer({documents:[{id:'ordered',name:'Ordered.pdf',type:'pdf',pages}],question:'لخص المرجع',mode:'strict',maxSentences:3});
+  assert.equal(result.origin,'source');
+  assert.deepEqual(result.references.map(ref=>ref.page),[1,5,9]);
+});
