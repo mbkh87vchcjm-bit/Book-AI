@@ -10,6 +10,7 @@
   var MAX_OCR_PAGES = 15;
   var defaults = {mode: 'flexible', allowMath: true, maxSentences: 3, ocrEnabled: true};
   var state;
+  var learningStore = null;
   var processing = false, cancelProcessing = false, savingWarning = false, storageBlocked = false, modalKind = null, toastTimer;
 
   function uid() { return Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 9); }
@@ -206,6 +207,63 @@
     openModal(modalShell(ref.docName, 'المصدر ' + fmt(index + 1) + ' · ' + label, content, footer), 'reference');
     if ($('open-full-page')) $('open-full-page').onclick = function () { openDocument(ref.docId, ref.page); };
   }
+  function openLearningCenter() {
+    if (processing) { toast('انتظر حتى تنتهي العملية الحالية.'); return; }
+    var exCount = learningStore ? learningStore.experience.length : 0;
+    var corrCount = learningStore ? learningStore.corrections.length : 0;
+    var candCount = learningStore ? learningStore.candidates.filter(function (c) { return c.status === 'candidate'; }).length : 0;
+    var lexCount = state.userLexicon ? state.userLexicon.length : 0;
+
+    var content = '<section class="settings-section"><h3>إحصائيات التعلم والتطور التراكمي</h3>' +
+      '<div class="setting-row"><div><strong>سجل الخبرة والتفاعلات</strong><small>الأسئلة والتقييمات المسجلة محليًا</small></div><span>' + fmt(exCount) + '</span></div>' +
+      '<div class="setting-row"><div><strong>التصحيحات المعتمدة</strong><small>ترجمات وتصحيحات حفظها المستخدم</small></div><span>' + fmt(corrCount) + '</span></div>' +
+      '<div class="setting-row"><div><strong>المصطلحات المكتسبة يدويًا</strong><small>المضافة إلى القاموس التقني المحلي</small></div><span>' + fmt(lexCount) + '</span></div>' +
+      '<div class="setting-row"><div><strong>مفاهيم بانتظار الاعتماد</strong><small>مفاهيم مرشحة من المراجع</small></div><span>' + fmt(candCount) + '</span></div>' +
+      '</section>' +
+      '<section class="settings-section"><h3>التحكم في الذاكرة التكيفية</h3>' +
+      '<button class="button-secondary" id="reset-weights-btn" style="width:100%;margin-bottom:8px">إعادة ضبط أوزان البحث المتعلمة</button>' +
+      '<p class="field-help">جميع البيانات والتصحيحات محفوظة على ذاكرة هاتفك فقط، دون أي اتصال بالإنترنت.</p></section>';
+
+    openModal(modalShell('مركز التعلم والتطور', 'متابعة المعرفة التراكمية للمحرك.', content, '<button class="button-primary" id="learning-ok">حسنًا</button>'), 'learning-center');
+    $('learning-ok').onclick = closeModal;
+    $('reset-weights-btn').onclick = function () {
+      if (learningStore) learningStore.resetWeights();
+      state.learningData = learningStore ? learningStore.exportData() : null;
+      saveState();
+      toast('تمت إعادة ضبط أوزان البحث.');
+      closeModal();
+    };
+  }
+
+  function openLexiconManager() {
+    if (processing) { toast('انتظر حتى تنتهي العملية الحالية.'); return; }
+    var content = '<section class="settings-section"><h3>توسيع القاموس التقني المزدوج</h3><p>أضف مصطلحات تقنية جديدة أو صحح مصطلحات حالية لربط البحث والاستعلامات بين العربية والإنجليزية محليًا.</p></section>' +
+      '<label class="field"><span>المصطلح بالعربية</span><input class="prompt-box" id="lex-ar" placeholder="مثال: تبديل الحزم"></label>' +
+      '<label class="field"><span>المصطلح بالإنجليزية</span><input class="prompt-box" id="lex-en" placeholder="مثال: Packet Switching"></label>' +
+      '<label class="field"><span>الاختصار (إن وجد)</span><input class="prompt-box" id="lex-abbr" placeholder="مثال: PS"></label>' +
+      '<label class="field"><span>المجال التقني</span><select id="lex-domain"><option value="networking">شبكات الحاسوب (Networking)</option><option value="databases">قواعد البيانات (Databases)</option><option value="operating-systems">أنظمة التشغيل (OS)</option><option value="architecture">معمارية الحاسوب (Architecture)</option><option value="cybersecurity">الأمن السيبراني (Cybersecurity)</option></select></label>' +
+      '<label class="field"><span>التعريف المباشر بالعربية</span><textarea id="lex-def" style="min-height:80px" placeholder="تعريف مختصر للمصطلح..."></textarea></label>';
+    openModal(modalShell('إضافة مصطلح للقاموس', 'توسيع المعرفة المحلية بدون إنترنت.', content, '<button class="button-secondary" id="lex-cancel">إلغاء</button><button class="button-primary" id="lex-save">حفظ المصطلح</button>'), 'lexicon');
+    $('lex-cancel').onclick = closeModal;
+    $('lex-save').onclick = function () {
+      var ar = $('lex-ar').value.trim(), en = $('lex-en').value.trim(), abbr = $('lex-abbr').value.trim(), dom = $('lex-domain').value, def = $('lex-def').value.trim();
+      if (!ar && !en) { toast('أدخل المصطلح بالعربية أو بالإنجليزية.'); return; }
+      if (!state.userLexicon) state.userLexicon = [];
+      state.userLexicon.push({
+        id: 'user-' + Date.now(),
+        term_ar: ar,
+        term_en: en,
+        abbreviation: abbr,
+        domain: dom,
+        definition_ar: def,
+        verified: true
+      });
+      saveState();
+      closeModal();
+      toast('تمت إضافة المصطلح للقاموس المحلي.');
+    };
+  }
+
   function openSettings() {
     if (processing) { toast('انتظر انتهاء قراءة المصدر أولًا.'); return; }
     var s = state.settings;
@@ -214,7 +272,7 @@
       '<div class="setting-row"><div><strong>السماح بالحساب المحلي</strong><small>للعمليات والمعادلات الخطية البسيطة عند إيقاف وضع المصادر فقط.</small></div><label class="switch"><input type="checkbox" id="allow-math" ' + (s.allowMath !== false ? 'checked' : '') + '><span></span></label></div>' +
       '<label class="field"><span>عدد الجمل المنتقاة</span><select id="max-sentences"><option value="1">جملة واحدة</option><option value="3">٣ جمل</option><option value="5">٥ جمل</option></select></label></section>' +
       '<section class="settings-section"><h3>قراءة الصفحات المصوّرة</h3><div class="setting-row"><div><strong>محاولة قراءة النص المطبوع من الصورة</strong><small>قوالب وقاموس محليان، حتى ١٥ صفحة مصوّرة لكل ملف.</small></div><label class="switch"><input type="checkbox" id="ocr-enabled" ' + (s.ocrEnabled !== false ? 'checked' : '') + '><span></span></label></div><p class="field-help">تجريبية ومحدودة الخطوط؛ قد تخطئ أو لا تتعرف على كلمات. لا تفهم الرسومات أو الخط اليدوي. صحّح النص بمقارنته بصورة الصفحة.</p></section>' +
-      '<section class="settings-section"><h3>الخصوصية</h3><p>المصادر والمحادثات محلية، ولا يطلب التطبيق صلاحية الإنترنت. البحث والتلخيص اقتباسيان، ولا يتعامل المحرك مع كل أنواع الأسئلة.</p></section>';
+      '<section class="settings-section"><h3>الخصوصية والتطوير</h3><p>المصادر والمحادثات محلية، ولا يطلب التطبيق صلاحية الإنترنت. البحث والتلخيص اقتباسيان، ولا يتعامل المحرك مع كل أنواع الأسئلة.</p><p style="margin-top:8px;font-size:0.85em;color:var(--text-secondary)">المطور محمد الفقيه</p></section>';
     openModal(modalShell('الإعدادات والتحكم', 'اضبط القيود المناسبة لك.', content, '<button class="button-secondary" id="cancel-settings">إلغاء</button><button class="button-primary" id="save-settings">حفظ الإعدادات</button>'), 'settings');
     $('max-sentences').value = String(s.maxSentences || 3);
     $('cancel-settings').onclick = closeModal;
@@ -374,8 +432,17 @@
     $('question').value = ''; $('question').style.height = '';
     try {
       var reply = A.answer({question: question, documents: session.documents, priorQuestion: prior && prior.text,
-        mode: state.settings.mode, allowMath: state.settings.allowMath, maxSentences: state.settings.maxSentences});
+        mode: state.settings.mode, allowMath: state.settings.allowMath, maxSentences: state.settings.maxSentences,
+        userLexicon: state.userLexicon, learningStore: learningStore});
       session.messages.push({id: uid(), role: 'assistant', text: reply.text, origin: reply.origin, references: reply.references});
+      if (learningStore) {
+        learningStore.recordExperience({
+          question: question,
+          answerText: reply.text,
+          references: reply.references
+        });
+        state.learningData = learningStore.exportData();
+      }
     } catch (_) {
       session.messages.push({id: uid(), role: 'assistant', text: 'تعذّر تحليل هذا السؤال محليًا. جرّب صياغة أبسط.', origin: 'error', references: []});
     }
@@ -401,12 +468,17 @@
 
   function init() {
     state = loadState();
+    if (window.MlkeLearning) {
+      learningStore = new window.MlkeLearning(state.learningData);
+    }
     // A killed process cannot resume a native generation. Do not leave a fake streaming message.
     state.sessions.forEach(function (s) { s.messages.forEach(function (m) { if (m.streaming) { m.streaming = false; m.origin = 'error'; m.references = []; m.text = m.text ? m.text + '\n\n[انقطع التوليد]' : 'انقطع التوليد قبل اكتماله. حاول مجددًا.'; } }); });
     renderAll();
     $('menu-btn').onclick = function () { openDrawer('rail'); }; $('close-rail').onclick = closeDrawers;
     $('mobile-sources').onclick = function () { openDrawer('sources-panel'); }; $('close-sources').onclick = closeDrawers; $('drawer-backdrop').onclick = closeDrawers;
     $('settings-btn').onclick = openSettings; $('top-settings').onclick = openSettings; $('mode-shortcut').onclick = openSettings;
+    if ($('lexicon-btn')) $('lexicon-btn').onclick = openLexiconManager;
+    if ($('learning-center-btn')) $('learning-center-btn').onclick = openLearningCenter;
     $('new-session').onclick = function () { if (isBusy()) return; var s = newSession(); state.sessions.unshift(s); state.activeId = s.id; saveState(); closeDrawers(); renderAll(); };
     $('session-more').onclick = function () { if (isBusy()) { toast('انتظر حتى تنتهي العملية الحالية.'); return; } openSessionOptions(); };
     ['add-source', 'mobile-add', 'welcome-upload', 'attach-btn'].forEach(function (id) { $(id).onclick = chooseFiles; });

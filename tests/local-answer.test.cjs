@@ -65,3 +65,15 @@ test('recognizes an answer problem from the source instead of guessing the exerc
   assert.equal(source.references[0].page,2);
   assert.match(source.references[0].excerpt,/الأرض/);
 });
+
+test('generates interactive study tools (quiz/MCQ and concept explanation)', () => {
+  const mcq = A.answer({documents:docs,question:'أنشئ لي اسئلة اختبار مع خيارات صح ام خطا',mode:'strict'});
+  assert.equal(mcq.origin, 'source');
+  assert.match(mcq.text, /عبارة صحيحة أم خاطئة/);
+  assert.ok(mcq.references.length > 0);
+
+  const explain = A.answer({documents:docs,question:'اشرح لي مفهوم الطاقة والجاذبية',mode:'strict'});
+  assert.equal(explain.origin, 'source');
+  assert.match(explain.text, /توضيح المفاهيم/);
+  assert.ok(explain.references.length > 0);
+});
