@@ -177,8 +177,8 @@
     return Array.from(terms);
   }
 
-  function search(documents, query, limit, priorQuery, termWeights) {
-    limit = limit || 3;
+  function search(documents, query, limit, priorQuery, termWeights, semanticModel) {
+    limit = Math.max(1, Math.min(20, Number(limit) || 3));
     var all = [];
     (documents || []).forEach(function (d) { all = all.concat(chunksForDocument(d)); });
     if (!all.length) return { references: [], overview: false, queryWords: [] };
@@ -197,7 +197,7 @@
       }).slice(0, limit);
       return { references: samples, overview: true, queryWords: terms };
     }
-    if (!terms.length) return { references: [], overview: false, queryWords: terms };
+    if (!terms.length && !semanticModel) return { references: [], overview: false, queryWords: terms, semanticUsed: false };
 
     var tokenSets = all.map(function (c) { return words(c.text); });
     var n = tokenSets.length;
@@ -219,7 +219,7 @@
       var tokens = tokenSets[i], length = tokens.length;
       var frequencies = Object.create(null);
       tokens.forEach(function (token) { frequencies[token] = (frequencies[token] || 0) + 1; });
-      var score = 0, matched = 0;
+      var lexicalScore = 0, matched = 0;
       terms.forEach(function (term) {
         var tf = frequencies[term] || 0;
         if (!tf) return;
@@ -232,14 +232,38 @@
           ? Number(termWeights[term]) : 1;
         if (!Number.isFinite(learnedWeight)) learnedWeight = 1;
         learnedWeight = Math.max(0.75, Math.min(1.5, learnedWeight));
-        score += idf * (tf * (k1 + 1)) / denominator * learnedWeight;
+        lexicalScore += idf * (tf * (k1 + 1)) / denominator * learnedWeight;
       });
       var matchedRatio = matched / Math.max(1, terms.length);
-      if (matched < 1 || (terms.length >= 4 && matchedRatio < 0.16)) score = 0;
-      if (score > 0 && phrase.length >= 5 && normalize(chunk.text).indexOf(phrase) >= 0) score *= 1.35;
-      if (score > 0 && matchedRatio >= 0.75) score *= 1.12;
-      return {chunk: chunk, score: score, matched: matched, matchedRatio: matchedRatio};
-    }).filter(function (x) { return x.score > 0; })
+      if (matched < 1 || (terms.length >= 4 && matchedRatio < 0.16)) lexicalScore = 0;
+      var semanticScore = 0;
+      if (semanticModel && typeof semanticModel.similarity === 'function') {
+        try {
+          semanticScore = Number(semanticModel.similarity(query, chunk.text)) || 0;
+          semanticScore = Math.max(0, Math.min(1, semanticScore));
+        } catch (_) { semanticScore = 0; }
+      }
+      return {chunk: chunk, lexicalScore: lexicalScore, semanticScore: semanticScore,
+        matched: matched, matchedRatio: matchedRatio};
+    });
+    var maxLexicalScore = scored.reduce(function (max, item) { return Math.max(max, item.lexicalScore); }, 0);
+    scored = scored.map(function (item) {
+      var score = 0;
+      if (item.lexicalScore > 0 && maxLexicalScore > 0) {
+        // Lexical evidence remains dominant. The corpus-trained neural model
+        // can reorder close candidates, but cannot erase an exact BM25 match.
+        score = 0.88 * (item.lexicalScore / maxLexicalScore) + 0.12 * item.semanticScore;
+      } else if (item.semanticScore >= 0.78) {
+        // Semantic-only retrieval has a deliberately high threshold because
+        // this tiny model is trained on the user's corpus, not general data.
+        score = 0.24 + (item.semanticScore - 0.78) * 0.5;
+      }
+      if (score > 0 && phrase.length >= 5 && normalize(item.chunk.text).indexOf(phrase) >= 0) score *= 1.12;
+      if (score > 0 && item.matchedRatio >= 0.75) score *= 1.06;
+      item.score = score;
+      return item;
+    }).filter(function (item) { return item.score > 0; })
+
       .sort(function (a, b) { return b.score - a.score || b.matchedRatio - a.matchedRatio || b.matched - a.matched || a.chunk.offset - b.chunk.offset; });
 
     // Avoid overlapping chunks from the same source page as separate citations.
@@ -248,7 +272,8 @@
       var key = item.chunk.docId + ':' + item.chunk.page;
       if (refs.length < limit && !pages.has(key)) { pages.add(key); refs.push(item.chunk); }
     });
-    return {references: refs, overview: false, queryWords: terms};
+    return {references: refs, overview: false, queryWords: terms,
+      semanticUsed: !!(semanticModel && scored.some(function (item) { return item.semanticScore > 0; }))};
   }
 
   function shorten(value, max) {
