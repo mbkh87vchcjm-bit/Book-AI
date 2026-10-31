@@ -29,7 +29,7 @@ test('MLKE Integration: Arabic question on English PDF passage ("ما وظيفة
   assert.equal(res.references.length, 1);
   assert.equal(res.references[0].docName, 'Networking.pdf');
   assert.equal(res.references[0].page, 7);
-  assert.match(res.text, /الترجمة/);
+  assert.match(res.text, /ترجمة معجمية تقريبية/);
   assert.match(res.text, /DNS translates domain names into IP addresses/);
 });
 
