@@ -198,6 +198,10 @@
         var pageKey = String(item.ref.docId) + ':' + String(item.ref.page);
         if (!seenPages.has(pageKey)) { bestPerPage.push(item); seenPages.add(pageKey); }
       });
+      // Sort by source order before even sampling. The candidate list is
+      // score-ranked above; sampling that order can omit the beginning/end
+      // whenever sentence lengths differ between pages.
+      bestPerPage.sort(function (a, b) { return a.order - b.order; });
       if (bestPerPage.length <= limit) chosen = bestPerPage;
       else for (var sample = 0; sample < limit; sample++) {
         var selectedIndex = Math.round(sample * (bestPerPage.length - 1) / Math.max(1, limit - 1));
