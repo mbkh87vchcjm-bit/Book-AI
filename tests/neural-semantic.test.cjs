@@ -46,3 +46,26 @@ test('does not create a neural model when the supplied corpus is too small', asy
   const model = await Neural.train([{id:'short',name:'short.txt',pages:[{page:1,text:'A short note.'}]}]);
   assert.equal(model, null);
 });
+
+
+test('uses a restored corpus-trained network inside grounded source answering', async () => {
+  const EngineAnswer = require('../app/src/main/assets/web/local-answer.js');
+  const docs = [{id:'net',name:'Network Notes.pdf',type:'pdf',pages:[
+    {page:2,text:'A router forwards network packets using routing information and address tables. '.repeat(5)},
+    {page:3,text:'Network routing selects a path for packets across connected networks. '.repeat(5)}
+  ]}];
+  const trained = await Neural.train(docs,{maxTokens:5000,maxVocabulary:300,dimension:16});
+  assert.ok(trained);
+  const restored = Neural.restore(trained.exportData());
+  assert.ok(restored);
+  const result = EngineAnswer.answer({
+    documents:docs,
+    question:'اشرح توجيه الشبكات والحزم',
+    mode:'strict',
+    maxSentences:5,
+    semanticModel:restored
+  });
+  assert.equal(result.origin,'source');
+  assert.ok(result.references.length>0);
+  assert.ok(result.references.every(ref=>ref.docName==='Network Notes.pdf'&&ref.page>0));
+});
