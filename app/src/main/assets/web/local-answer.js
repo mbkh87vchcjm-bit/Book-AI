@@ -140,28 +140,60 @@
   }
 
   function selectSentences(documents, result, question, limit) {
-    var q = new Set(E.words(question)), items = [];
-    var sources = result.overview ? [] : result.references;
+    var q = new Set(E.words(question).concat(result.queryWords || [])), items = [];
+    var sources = result.overview ? [] : (result.references || []);
+
+    // Full-reference summaries sample the complete document, not just its opening pages.
     if (result.overview) {
-      documents.forEach(function (doc) { (doc.pages || []).forEach(function (page) {
-        if (page.text) sources.push({docId: doc.id, docName: doc.name, page: page.page, type: doc.type, text: page.text, ocr: !!page.ocr});
-      }); });
+      documents.forEach(function (doc) {
+        (doc.pages || []).forEach(function (page) {
+          if (page.text) sources.push({
+            docId: doc.id, docName: doc.name, page: page.page, type: doc.type,
+            text: page.text, ocr: !!page.ocr
+          });
+        });
+      });
+      var count = Math.min(limit, sources.length), sampled = [];
+      for (var p = 0; p < count; p++) {
+        var pageIndex = count <= 1 ? 0 : Math.round(p * (sources.length - 1) / (count - 1));
+        var ref = sources[pageIndex];
+        var pageSentences = sentences(ref.text);
+        if (!pageSentences.length) continue;
+        pageSentences.sort(function (a, b) { return E.words(b).length - E.words(a).length; });
+        sampled.push({score: 1, order: pageIndex * 1000, text: pageSentences[0], ref: ref});
+      }
+      return sampled.sort(function (a, b) { return a.order - b.order; });
     }
+
     sources.slice(0, 120).forEach(function (ref, pageOrder) {
       sentences(ref.text).slice(0, 160).forEach(function (text, index) {
-        var terms = E.words(text), matched = new Set(terms.filter(function (w) { return q.has(w); }));
-        var score = result.overview ? Math.min(terms.length, 22) / 22 + 1 / (3 + index) : matched.size * 4 + Math.min(terms.length, 20) / 50;
-        if (!result.overview && q.size && !matched.size) return;
+        var terms = E.words(text);
+        var matched = new Set(terms.filter(function (w) { return q.has(w); }));
+        var score = matched.size * 5 + Math.min(terms.length, 30) / 40;
+        // The BM25 engine expands bilingual terms. Reuse those terms here instead
+        // of silently discarding English passages that matched the Arabic query.
+        if (q.size && !matched.size) return;
         items.push({score: score, order: pageOrder * 1000 + index, text: text, ref: ref});
       });
     });
+
     items.sort(function (a, b) { return b.score - a.score || a.order - b.order; });
-    var seen = new Set(), chosen = [];
+    var seen = new Set(), perPage = {}, chosen = [];
     items.forEach(function (item) {
       var key = E.normalize(item.text);
-      if (chosen.length < limit && !seen.has(key)) { chosen.push(item); seen.add(key); }
+      var pageKey = String(item.ref.docId || item.ref.docName) + ':' + item.ref.page;
+      var pageCount = perPage[pageKey] || 0;
+      if (chosen.length < limit && !seen.has(key) && pageCount < 4) {
+        chosen.push(item);
+        seen.add(key);
+        perPage[pageKey] = pageCount + 1;
+      }
     });
-    if (result.overview) chosen.sort(function (a, b) { return a.order - b.order; });
+    // Present evidence in the original page order after relevance selection.
+    chosen.sort(function (a, b) {
+      var ad = String(a.ref.docId || a.ref.docName), bd = String(b.ref.docId || b.ref.docName);
+      return ad.localeCompare(bd) || Number(a.ref.page || 0) - Number(b.ref.page || 0) || a.order - b.order;
+    });
     return chosen;
   }
 
@@ -169,7 +201,7 @@
     var q = E.normalize(question);
     var isQuestionGen = /(?:اسئلة|أسئلة|تمارين|اختبار|اسئلة دراسية|أسئلة دراسية|quiz|questions|exercises)/.test(q);
     var isMcq = /(?:خيارات|اختيار من متعدد|صح ام خطا|صح أو خطأ|صح وخطأ|mcq|true or false)/.test(q);
-    var isExplain = /(?:اشرح|توضيح|مفهوم|ما معنى|ما مفهوم|explain|clarify|concept)/.test(q);
+    var isExplain = false; // Route explanations through the detailed evidence composer.
 
     if (!isQuestionGen && !isMcq && !isExplain) return null;
 
@@ -226,13 +258,126 @@
     return null;
   }
 
+  function sourceLabel(item) {
+    var ref = item.ref || {};
+    var name = ref.docName || 'مرجع';
+    var page = ref.page ? '، الصفحة ' + ref.page : '';
+    return '[' + name + page + ']';
+  }
+
+  function isEnglishSource(text) {
+    var value = String(text || '');
+    return (value.match(/[a-zA-Z]/g) || []).length > (value.match(/[\u0600-\u06ff]/g) || []).length;
+  }
+
+  function renderEvidenceItem(item, index, language, learningStore) {
+    var original = String(item.text || '').trim();
+    var source = sourceLabel(item);
+    if (language === 'ar' && isEnglishSource(original) && TranslatorModule) {
+      var translated = TranslatorModule.translateSentence(original, learningStore);
+      if (translated && translated.status === 'complete' && translated.translated &&
+          translated.translated.indexOf('[') < 0) {
+        return (index + 1) + '. ترجمة معجمية تقريبية: ' + translated.translated +
+          '\n   النص الأصلي: ' + original + '\n   المصدر: ' + source;
+      }
+      return (index + 1) + '. النص الأصلي: ' + original + '\n   المصدر: ' + source +
+        '\n   ملاحظة: قاموس الترجمة المحلي لا يغطي هذه الجملة بالكامل.';
+    }
+    return (index + 1) + '. ' + original + '\n   المصدر: ' + source;
+  }
+
+  function uniqueReferences(items) {
+    var seen = new Set(), refs = [];
+    items.forEach(function (item) {
+      var ref = item.ref || {};
+      var key = String(ref.docId || ref.docName || '') + ':' + String(ref.page || '');
+      if (!key || seen.has(key)) return;
+      seen.add(key);
+      refs.push({
+        docId: ref.docId, docName: ref.docName, page: ref.page, type: ref.type,
+        excerpt: E.shorten(ref.text || item.text || '', 600), ocr: !!ref.ocr
+      });
+    });
+    return refs;
+  }
+
+  function buildComparisonAnswer(docs, queryObj, question, limit, options) {
+    var entities = (queryObj.entities || []).slice(0, 2);
+    if (entities.length < 2) return null;
+
+    var groups = [];
+    var perEntityLimit = Math.max(8, Math.min(18, Math.ceil(limit / 2)));
+    entities.forEach(function (entity) {
+      var found = E.search(docs, entity, 30, '', options.learningStore);
+      var selected = selectSentences(docs, found, entity, perEntityLimit);
+      if (!selected.length && found.references && found.references.length) {
+        selected = found.references.map(function (ref) { return {text: ref.text, ref: ref}; });
+      }
+      groups.push({entity: entity, items: selected});
+    });
+    if (!groups.some(function (group) { return group.items.length; })) return null;
+
+    var lines = ['**مقارنة موثقة من المراجع: ' + entities[0] + ' و' + entities[1] + '**'];
+    groups.forEach(function (group, groupIndex) {
+      lines.push('\n**الطرف ' + (groupIndex + 1) + ': ' + group.entity + '**');
+      if (!group.items.length) {
+        lines.push('لم يسترجع البحث مقاطع كافية لهذا الطرف من النص المستخرج. هذا لا يثبت غيابه من الملف؛ فقد تكون الصياغة مختلفة أو الصفحة مصوّرة.');
+        return;
+      }
+      lines.push(group.items.map(function (item, i) {
+        return renderEvidenceItem(item, i, queryObj.language, options.learningStore);
+      }).join('\n\n'));
+    });
+    lines.push('\n**حدود المقارنة**');
+    lines.push('هذه أدلة كل طرف كما وردت في المراجع. لا أقرر أن أحدهما أفضل أو أسرع إلا إذا احتوى المرجع على معيار وبيانات مقارنة صريحة.');
+    var allItems = groups.reduce(function (all, group) { return all.concat(group.items); }, []);
+    return {
+      text: lines.join('\n\n'),
+      origin: 'source',
+      intent: 'comparison',
+      evidenceCount: allItems.length,
+      references: uniqueReferences(allItems)
+    };
+  }
+
+  function buildDetailedAnswer(selected, queryObj, question, options, found) {
+    var evidence = selected.map(function (item, i) {
+      return renderEvidenceItem(item, i, queryObj.language, options.learningStore);
+    });
+    var title = queryObj.intent === 'process' ? 'شرح مرجعي موسع: آلية العمل والخطوات'
+      : queryObj.intent === 'cause' ? 'شرح مرجعي موسع: الأسباب والنتائج'
+      : queryObj.intent === 'definition' ? 'شرح مرجعي موسع: المفهوم والتعريف'
+      : queryObj.intent === 'function' ? 'شرح مرجعي موسع: الوظيفة ودور المكوّن'
+      : queryObj.intent === 'summarization' ? 'ملخص مرجعي موسع موزع على الصفحات'
+      : 'إجابة مرجعية موسعة ومنظمة';
+    var text = '**' + title + '**\n\n';
+    text += '**السؤال:** ' + question + '\n\n';
+    text += '**المقاطع الداعمة من المرجع مرتبة بحسب الصفحات**\n\n';
+    text += evidence.join('\n\n');
+    text += '\n\n**حدود الإجابة**\n';
+    text += 'هذه إجابة استرجاعية منظمة: جُمعت مقاطع ذات صلة من صفحات متعددة وربط كل مقطع بمصدره. المحرك لا يستخدم نموذجًا لغويًا توليديًا، لذلك لا يخترع شرحًا حرًا أو معلومات ليست في المرجع. ';
+    if (selected.length < Math.max(10, Math.floor((Number(options.maxSentences) || 24) * 0.6))) {
+      text += 'النص المستخرج أو الأدلة المطابقة قليلة؛ لذلك لا أستطيع ضمان صفحة كاملة من دون تكرار أو إضافة معلومات غير موثقة.';
+    } else {
+      text += 'راجع بطاقات الصفحات لقراءة المقاطع ضمن سياقها الكامل.';
+    }
+    return {
+      text: text,
+      origin: 'source',
+      intent: queryObj.intent,
+      evidenceCount: selected.length,
+      references: uniqueReferences(selected),
+      overview: !!found.overview
+    };
+  }
+
   function answer(options) {
     options = options || {};
     var lexicon = getSharedLexicon(options.userLexicon);
     var question = String(options.question || '').trim();
     var docs = options.documents || [];
     var strict = options.mode === 'strict';
-    var limit = Math.max(1, Math.min(5, Number(options.maxSentences) || 3));
+    var limit = Math.max(1, Math.min(40, Number(options.maxSentences) || 24));
 
     if (!strict && options.allowMath !== false) {
       var calculation = calculate(question);
@@ -277,14 +422,15 @@
       };
     }
 
-    // Step 2: Knowledge Extraction & Inference for Comparisons
-    if (KnowledgeModule && queryObj.intent === 'comparison') {
-      var inf = KnowledgeModule.inferAnswer(queryObj, docs, kb);
-      if (inf) return inf;
-    }
+    // Step 2: Broad retrieval. The rule-based fact extractor only recognizes a
+    // narrow set of sentence patterns, so it must not decide that a comparison side
+    // is absent merely because its pattern did not match.
+    var found = E.search(docs, question, 50, options.priorQuestion || '', options.learningStore);
 
-    // Step 3: BM25 Retrieval & Selection with Learning Feedback
-    var found = E.search(docs, question, 5, options.priorQuestion || '', options.learningStore);
+    if (queryObj.intent === 'comparison') {
+      var comparison = buildComparisonAnswer(docs, queryObj, question, limit, options);
+      if (comparison) return comparison;
+    }
 
     var selected = selectSentences(docs, found, question, limit);
     if (!selected.length && found.references && found.references.length) {
@@ -306,38 +452,7 @@
       };
     }
 
-    var refs = selected.map(function (item) {
-      return {
-        docId: item.ref.docId,
-        docName: item.ref.docName,
-        page: item.ref.page,
-        type: item.ref.type,
-        excerpt: E.shorten(item.text, 600),
-        ocr: !!item.ref.ocr
-      };
-    });
-
-    // Step 4: Translation if source is English and question is Arabic
-    var bodyPassages = selected.map(function (item, i) {
-      var num = i + 1;
-      var text = item.text;
-      var isEnglishSource = /[a-zA-Z]/.test(text) && (text.match(/[a-zA-Z]/g) || []).length > (text.match(/[\u0600-\u06ff]/g) || []).length;
-
-      if (isEnglishSource && queryObj.language === 'ar' && TranslatorModule) {
-        var tr = TranslatorModule.translateSentence(text, options.learningStore);
-        return '[' + num + '] الترجمة: «' + tr.translated + '»\nالنص الأصلي: "' + text + '"';
-      }
-      return '[' + num + '] «' + text + '»';
-    });
-
-    var header = found.overview ? 'ملخص اقتباسي من جمل مختارة:' : 'الإجابة المستخرجة من المراجع:';
-    var fullText = header + '\n\n' + bodyPassages.join('\n\n') + '\n\nملاحظة: جميع الاقتباسات مربوطة بالمصادر الأصلية ورقم الصفحة.';
-
-    return {
-      text: fullText,
-      origin: 'source',
-      references: refs
-    };
+    return buildDetailedAnswer(selected, queryObj, question, options, found);
   }
 
   return {
