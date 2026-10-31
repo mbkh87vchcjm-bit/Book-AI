@@ -46,13 +46,15 @@
 
   function words(text) {
     var pattern = /c\+\+|c#|f#|tcp\/ip|udp\/ip|http\/2|wi-fi|802\.11[a-z0-9]*|[a-z0-9]+(?:[+#]|\/[a-z0-9]+|\.[a-z0-9]+)*|[\u0621-\u063a\u0641-\u064a\u066e-\u06d3\u06fa-\u06fc\u0750-\u077f\u08a0-\u08c9]+/g;
-    var raw = normalize(text).match(pattern) || [], output = [], seen = new Set();
+    var raw = normalize(text).match(pattern) || [], output = [];
     raw.forEach(function (token) {
       var technical = /[+#/.]/.test(token) || /^\d/.test(token);
       if (!technical && (token.length <= 1 || STOP.has(token))) return;
+      var local = new Set();
       stemVariants(token).forEach(function (variant) {
-        if (variant.length > 1 && (technical || !STOP.has(variant)) && !seen.has(variant)) {
-          seen.add(variant); output.push(variant);
+        if (variant.length > 1 && (technical || !STOP.has(variant)) && !local.has(variant)) {
+          local.add(variant);
+          output.push(variant); // Keep repeats across the text: BM25 needs term frequency.
         }
       });
     });
@@ -61,7 +63,7 @@
 
   function baseWords(text) {
     var pattern = /c\+\+|c#|f#|tcp\/ip|udp\/ip|http\/2|wi-fi|802\.11[a-z0-9]*|[a-z0-9]+(?:[+#]|\/[a-z0-9]+|\.[a-z0-9]+)*|[\u0621-\u063a\u0641-\u064a\u066e-\u06d3\u06fa-\u06fc\u0750-\u077f\u08a0-\u08c9]+/g;
-    var raw = normalize(text).match(pattern) || [], output = [], seen = new Set();
+    var raw = normalize(text).match(pattern) || [], output = [];
     raw.forEach(function (token) {
       var technical = /[+#/.]/.test(token) || /^\d/.test(token);
       if (!technical && (token.length <= 1 || STOP.has(token))) return;
@@ -74,9 +76,7 @@
       } else if (/^[a-z]+$/.test(stemmed) && stemmed.length > 5) {
         stemmed = stemmed.replace(/(ing|ed|es|s)$/, '');
       }
-      if (stemmed.length > 1 && (technical || !STOP.has(stemmed)) && !seen.has(stemmed)) {
-        seen.add(stemmed); output.push(stemmed);
-      }
+      if (stemmed.length > 1 && (technical || !STOP.has(stemmed))) output.push(stemmed);
     });
     return output;
   }
