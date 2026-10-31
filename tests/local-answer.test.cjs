@@ -123,3 +123,16 @@ test('source answers expose lexical query terms used for local feedback', () => 
   assert.ok(result.queryTerms.includes('بروتوكول'));
   assert.ok(result.queryTerms.length <= 30);
 });
+
+
+test('answers from reviewed knowledge facts only and preserves source provenance',()=>{
+ const KG=require('../app/src/main/assets/web/knowledge-graph.js');
+ const facts=KG.extractDocument({id:'graph',name:'Networks.pdf',type:'pdf',pages:[{page:6,text:'The neural network is a computational model of connected units.'}]});
+ const question='What is a neural network?';
+ const pending=A.answer({documents:[],knowledgeFacts:facts,question,mode:'strict'});
+ assert.equal(pending.origin,'miss');
+ KG.applyReview(facts,facts[0].id,'user-confirmed');
+ const approved=A.answer({documents:[],knowledgeFacts:facts,question,mode:'strict'});
+ assert.equal(approved.origin,'source');assert.equal(approved.references[0].docName,'Networks.pdf');
+ assert.equal(approved.references[0].page,6);assert.match(approved.references[0].excerpt,/neural network/);
+});

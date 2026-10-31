@@ -1,8 +1,8 @@
 /* A small, deterministic local assistant. This is NOT a trained LLM. */
 (function (root, factory) {
-  if (typeof module === 'object' && module.exports) module.exports = factory(require('./engine.js'));
-  else root.MidadAnswer = factory(root.MidadEngine);
-}(typeof globalThis !== 'undefined' ? globalThis : this, function (E) {
+  if (typeof module === 'object' && module.exports) module.exports = factory(require('./engine.js'), require('./knowledge-graph.js'));
+  else root.MidadAnswer = factory(root.MidadEngine, root.MidadKnowledgeGraph);
+}(typeof globalThis !== 'undefined' ? globalThis : this, function (E, Knowledge) {
   'use strict';
 
   function normalizeMath(value) {
@@ -225,6 +225,19 @@
     }
     var found = E.search(docs, question, 5, options.priorQuestion || '', options.termWeights || null);
     var selected = selectSentences(docs, found, question, limit);
+    if (!selected.length && Knowledge && Array.isArray(options.knowledgeFacts)) {
+      var knowledgeHits = Knowledge.search(options.knowledgeFacts, question, limit);
+      if (knowledgeHits.length) {
+        var knowledgeRefs = knowledgeHits.map(function (hit) {
+          var fact = hit.fact;
+          return {docId: fact.docId, docName: fact.docName, page: fact.page, type: fact.type || 'pdf', excerpt: fact.excerpt, ocr: false};
+        });
+        var body = knowledgeRefs.map(function (ref, index) { return '[' + (index + 1) + '] «' + ref.excerpt + '»'; }).join('\n\n');
+        var terms = found.queryWords && found.queryWords.length ? found.queryWords : E.words(question);
+        return {text: 'من حقائق راجعتها واعتمدتها في قاعدة المعرفة المحلية:\n\n' + body + '\n\nكل مقتطف مرتبط بمرجعه وصفحته الأصلية.',
+          origin: 'source', references: knowledgeRefs, queryTerms: terms.slice(0, 30)};
+      }
+    }
     if (!selected.length) return {text: strict && !docs.length
       ? 'أضف مرجعًا أولًا؛ وضع المصادر فقط لا يجيب من خارجها.'
       : 'لم أجد نصًا مناسبًا في مراجعك. لا أملك معرفة عامة مولّدة؛ جرّب صياغة أخرى أو أضف مصدرًا. يمكنني أيضًا حساب تعبير أو حل معادلة خطية بسيطة عند السماح بالحساب.', origin: 'miss', references: []};
