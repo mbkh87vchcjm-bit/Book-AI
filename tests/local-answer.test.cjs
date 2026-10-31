@@ -161,7 +161,7 @@ test('builds a detailed structured answer from multiple evidence roles and pages
     {page:4,text:'The data transfer process consists of sending, routing, and receiving packets.'},
     {page:5,text:'Each packet carries addressing information so the network can deliver it.'},
     {page:6,text:'For example, a home network connects computers, phones, and printers.'},
-    {page:7,text:'Because switches reduce unnecessary traffic, local communication can be more efficient.'},
+    {page:7,text:'Because switches reduce unnecessary traffic in a network, local communication can be more efficient.'},
     {page:8,text:'However, network performance can decline when congestion increases.'}
   ];
   const result = A.answer({
