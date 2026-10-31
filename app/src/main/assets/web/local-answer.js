@@ -242,6 +242,23 @@
       });
     });
     items.sort(function (a, b) { return b.score - a.score || a.order - b.order; });
+    if (result.overview) {
+      // Sample across the complete document set, not only the first ranked pages.
+      // This preserves the beginning, middle, end, and smaller secondary sources.
+      var bestByPage = new Map();
+      items.forEach(function (item) {
+        var key = String(item.ref.docId) + ':' + String(item.ref.page);
+        if (!bestByPage.has(key)) bestByPage.set(key, item);
+      });
+      var pageCandidates = Array.from(bestByPage.values()).sort(function (a, b) { return a.order - b.order; });
+      if (pageCandidates.length <= limit) return pageCandidates;
+      var sampledPages = [];
+      for (var sample = 0; sample < limit; sample++) {
+        var sampleIndex = Math.round(sample * (pageCandidates.length - 1) / Math.max(1, limit - 1));
+        if (pageCandidates[sampleIndex]) sampledPages.push(pageCandidates[sampleIndex]);
+      }
+      return sampledPages;
+    }
     var priority = rolePriority(intent), chosen = [], seenText = new Set(), pageCounts = Object.create(null);
     function add(item) {
       var normalized = E.normalize(item.text);
@@ -256,18 +273,6 @@
       if (candidate) add(candidate);
     });
     items.forEach(function (item) { add(item); });
-    if (result.overview) {
-      chosen.sort(function (a, b) { return a.order - b.order; });
-      if (chosen.length > limit) chosen = chosen.slice(0, limit);
-      if (chosen.length > 2) {
-        var spread = [];
-        for (var pick = 0; pick < limit; pick++) {
-          var chosenIndex = Math.round(pick * (chosen.length - 1) / Math.max(1, limit - 1));
-          if (chosen[chosenIndex] && spread.indexOf(chosen[chosenIndex]) < 0) spread.push(chosen[chosenIndex]);
-        }
-        chosen = spread;
-      }
-    }
     return chosen;
   }
 
@@ -290,7 +295,7 @@
     var lines = [];
     var sourceCount = refs.length;
     var opening = intent === 'summary'
-      ? 'ملخص منظم من مقتطفات موزعة على المراجع والصفحات المتاحة:'
+      ? 'ملخص اقتباسي منظم من مقتطفات موزعة على المراجع والصفحات المتاحة:'
       : 'إجابة منظمة مبنية على النصوص التي عُثر عليها في مراجعك:';
     lines.push(opening);
     var priority = rolePriority(intent), used = new Set();
