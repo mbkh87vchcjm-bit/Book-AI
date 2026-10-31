@@ -242,7 +242,7 @@
       var matchedRatio = matched / Math.max(1, terms.length);
       // A curated bilingual phrase may legitimately match only one English or Arabic anchor term.
       // Keep the stricter ratio for ordinary unexpanded queries.
-      var minCoverage = hasCuratedExpansion ? 0.08 : 0.16;
+      var minCoverage = hasCuratedExpansion ? 0.03 : 0.16;
       if (matched < 1 || (terms.length >= 4 && matchedRatio < minCoverage)) lexicalScore = 0;
       var semanticScore = 0;
       if (semanticModel && typeof semanticModel.similarity === 'function') {
