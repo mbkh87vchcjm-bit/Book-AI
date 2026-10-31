@@ -77,3 +77,59 @@ test('generates interactive study tools (quiz/MCQ and concept explanation)', () 
   assert.match(explain.text, /توضيح المفاهيم/);
   assert.ok(explain.references.length > 0);
 });
+
+
+test('detailed answer can retrieve a page-like body from sufficient evidence across many pages', () => {
+  const pages = Array.from({length:30}, (_, i) => ({
+    page: i + 1,
+    text: 'Network routing selects paths for packets across connected networks. ' +
+      'Router routing information directs packets to destination segment ' + (i + 1) + '.'
+  }));
+  const result = A.answer({
+    documents: [{id:'routing-book',name:'Routing.pdf',type:'pdf',pages}],
+    question: 'اشرح network routing بالتفصيل',
+    mode: 'strict',
+    maxSentences: 24
+  });
+  assert.equal(result.origin, 'source');
+  assert.ok(result.evidenceCount > 5);
+  assert.ok(result.references.length > 5);
+  assert.ok(result.text.length > 1500);
+});
+
+test('Arabic-English retrieval does not discard passages found through BM25 expansion', () => {
+  const docs = [{id:'dns',name:'DNS.pdf',type:'pdf',pages:[
+    {page:7,text:'The Domain Name System (DNS) translates domain names into IP addresses. DNS helps users locate services by human-readable names.'}
+  ]}];
+  const result = A.answer({
+    documents: docs,
+    question: 'ما وظيفة نظام أسماء النطاقات DNS؟',
+    mode: 'strict',
+    maxSentences: 12
+  });
+  assert.equal(result.origin, 'source');
+  assert.ok(result.references.some(ref => ref.page === 7));
+  assert.match(result.text, /Domain Name System|DNS/);
+});
+
+test('comparison searches both terms independently and avoids false missing-reference claims', () => {
+  const docs = [{id:'transport',name:'Transport.pdf',type:'pdf',pages:[
+    {page:4,text:'TCP provides reliable and ordered data transmission between communicating hosts.'},
+    {page:5,text:'UDP provides connectionless datagram delivery with low overhead.'},
+    {page:6,text:'TCP detects lost data and retransmits it when necessary.'},
+    {page:7,text:'UDP does not guarantee delivery or packet order at the transport layer.'}
+  ]}];
+  const result = A.answer({
+    documents: docs,
+    question: 'قارن بين TCP وUDP',
+    mode: 'strict',
+    maxSentences: 24
+  });
+  assert.equal(result.origin, 'source');
+  assert.equal(result.intent, 'comparison');
+  assert.match(result.text, /TCP/);
+  assert.match(result.text, /UDP/);
+  assert.doesNotMatch(result.text, /غير متوفر في المرجع/);
+  assert.ok(result.references.some(ref => ref.page === 4));
+  assert.ok(result.references.some(ref => ref.page === 5));
+});
