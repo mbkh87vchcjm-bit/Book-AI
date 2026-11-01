@@ -218,6 +218,288 @@
     return out;
   }
 
+  // Character TF-IDF uses short within-token n-grams. Padding preserves
+  // word boundaries; grams are never formed across whitespace.
+  function characterNgramCounts(text) {
+    var counts = Object.create(null);
+    baseWords(text).forEach(function (word) {
+      var chars = Array.from('^' + word + '
+    var q = normalize(query);
+    return /(?:لخص|تلخيص|ملخص|اهم النقاط|اهم الافكار|الافكار الرئيسيه|الافكار المهمه|المواضيع|الموضوعات|جميع المواضيع|كل المواضيع|كامل المحتوى|المحتوى بالكامل|نظره عامه|فكره عامه|ملخصا|summari[sz]e|overview|key points|main points|main ideas|all topics|whole document|entire document|full reference)/.test(q);
+  }
+
+  function search(documents, query, limit, priorQuery, learningStore, semanticModel) {
+    limit = Math.max(1, Math.min(120, Number(limit) || 3));
+    var all = [];
+    (documents || []).forEach(function (doc) { all = all.concat(chunksForDocument(doc)); });
+    if (!all.length) return {references: [], overview: false, queryWords: [], retrievalStats: {bm25: 0, character: 0, phrase: 0, semantic: 0}};
+
+    var rawTerms = words(query);
+    if (!rawTerms.length && priorQuery) rawTerms = words(priorQuery);
+    var overview = isOverview(query);
+    if (overview) {
+      var seenPages = new Set();
+      var pages = all.filter(function (chunk) {
+        var key = chunk.docId + ':' + chunk.page;
+        if (seenPages.has(key)) return false;
+        seenPages.add(key);
+        return true;
+      });
+      var sampleCount = Math.min(limit, pages.length), samples = [];
+      for (var pageIndex = 0; pageIndex < sampleCount; pageIndex++) {
+        var chosenIndex = sampleCount <= 1 ? 0 : Math.round(pageIndex * (pages.length - 1) / (sampleCount - 1));
+        samples.push(pages[chosenIndex]);
+      }
+      return {references: samples, overview: true, queryWords: rawTerms,
+        retrievalStats: {bm25: 0, character: 0, phrase: 0, semantic: 0}};
+    }
+    if (!rawTerms.length) return {references: [], overview: false, queryWords: rawTerms,
+      retrievalStats: {bm25: 0, character: 0, phrase: 0, semantic: 0}};
+
+    // Weighted Query Expansion from the user's local technical lexicon.
+    var termWeights = Object.create(null);
+    rawTerms.forEach(function (term) { termWeights[term] = 1.0; });
+    var lexicon = getLexicon();
+    if (lexicon) {
+      var normalizedQuery = normalize(query);
+      var queryTokens = normalizedQuery.match(/[a-z0-9\u0621-\u063a\u0641-\u064a]+/g) || [];
+      for (var length = 4; length >= 1; length--) {
+        for (var start = 0; start <= queryTokens.length - length; start++) {
+          var phrase = queryTokens.slice(start, start + length).join(' ');
+          var match = lexicon.lookupTerm(phrase);
+          if (match) {
+            lexicon.expandQueryTerms(phrase).forEach(function (expansion) {
+              words(expansion).forEach(function (word) {
+                if (!termWeights[word]) termWeights[word] = 0.75;
+              });
+            });
+          }
+        }
+      }
+    }
+
+    var terms = Object.keys(termWeights);
+    var k1 = 1.2, b = 0.75;
+    var tokenSets = all.map(function (chunk) { return words(chunk.text); });
+    var docLengths = tokenSets.map(function (tokens) { return tokens.length; });
+    var avgDocLength = docLengths.reduce(function (sum, length) { return sum + length; }, 0) / (all.length || 1);
+    var df = Object.create(null);
+    terms.forEach(function (term) {
+      df[term] = tokenSets.reduce(function (count, tokens) {
+        return count + (tokens.indexOf(term) >= 0 ? 1 : 0);
+      }, 0);
+    });
+
+    // Signal 1: BM25 lexical retrieval. Learning weights and lexicon expansion
+    // remain confined to this signal; they cannot suppress the other retrievers.
+    var bm25 = all.map(function (chunk, index) {
+      var tokens = tokenSets[index], length = docLengths[index], score = 0, matched = 0;
+      terms.forEach(function (term) {
+        var tf = tokens.reduce(function (count, token) { return count + (token === term ? 1 : 0); }, 0);
+        if (!tf) return;
+        matched++;
+        var idf = Math.log(1 + (all.length - df[term] + 0.5) / (df[term] + 0.5));
+        var termScore = idf * ((tf * (k1 + 1)) /
+          (tf + k1 * (1 - b + b * (length / (avgDocLength || 1)))));
+        var learnedWeight = learningStore && learningStore.getTermWeight
+          ? learningStore.getTermWeight(term) : 1.0;
+        score += termScore * (termWeights[term] || 0.5) * learnedWeight;
+      });
+      var normalizedChunk = normalize(chunk.text);
+      if (normalizedQuery.length >= 4 && normalizedChunk.indexOf(normalizedQuery) >= 0) score *= 2;
+      return {index: index, score: score, matched: matched};
+    }).filter(function (item) { return item.score > 0; })
+      .sort(function (a, b) { return b.score - a.score || b.matched - a.matched || all[a.index].offset - all[b.index].offset; })
+      .map(function (item) { return {index: item.index, signal: 'bm25'}; });
+
+    // Signal 2: character TF-IDF cosine. It is useful for spelling variants and
+    // small OCR/edit-distance errors, but short words are handled by BM25 instead.
+    var characterScores = characterTfidfScores(query, all);
+    var maxCharacterScore = characterScores.reduce(function (max, score) { return Math.max(max, score); }, 0);
+    var characterCutoff = Math.max(0.06, maxCharacterScore * 0.28);
+    var character = characterScores.map(function (score, index) {
+      return {index: index, score: score, signal: 'character'};
+    }).filter(function (item) {
+      return item.score >= characterCutoff && item.score > 0;
+    }).sort(function (a, b) { return b.score - a.score || a.index - b.index; })
+      .slice(0, Math.max(20, limit * 5));
+
+    // Signal 3: exact ordered phrase matching after conservative stop-word removal.
+    var phraseQuery = phraseTerms(query);
+    var phrase = [];
+    if (phraseQuery.length >= 2) {
+      all.forEach(function (chunk, index) {
+        if (containsOrderedPhrase(chunk.text, phraseQuery)) phrase.push({index: index, signal: 'phrase'});
+      });
+    }
+
+    // Signal 4: only high-confidence local semantic hits are allowed to vote.
+    var semantic = [];
+    var semanticScores = all.map(function (chunk) {
+      if (!semanticModel || typeof semanticModel.similarity !== 'function') return 0;
+      try {
+        return Math.max(0, Math.min(1, Number(semanticModel.similarity(query, chunk.text)) || 0));
+      } catch (_) { return 0; }
+    });
+    semanticScores.map(function (score, index) { return {index: index, score: score}; })
+      .filter(function (item) { return item.score >= 0.78; })
+      .sort(function (a, b) { return b.score - a.score || a.index - b.index; })
+      .forEach(function (item) { semantic.push({index: item.index, signal: 'semantic'}); });
+
+    // RRF fuses independent ranked lists. Raw BM25 and cosine scores are never
+    // added together because their numerical scales are not comparable.
+    var fused = reciprocalRankFusion([bm25, character, phrase, semantic], 60);
+    var fusedByIndex = new Map();
+    fused.forEach(function (item) { fusedByIndex.set(item.index, item); });
+
+    var ranked = fused.map(function (item) {
+      return {
+        chunk: all[item.index],
+        score: item.score,
+        bm25Score: bm25.find(function (candidate) { return candidate.index === item.index; }) || null,
+        characterScore: characterScores[item.index] || 0,
+        phraseMatch: (item.ranks.phrase || 0) > 0,
+        semanticScore: semanticScores[item.index] || 0,
+        matched: tokenSets[item.index].filter(function (token) { return terms.indexOf(token) >= 0; }).length,
+        ranks: item.ranks
+      };
+    });
+
+    // Retain the source-coverage guard used by the earlier BM25 engine.
+    var pageCounts = Object.create(null), refs = [], diagnostics = [];
+    ranked.forEach(function (item) {
+      var key = item.chunk.docId + ':' + item.chunk.page;
+      var count = pageCounts[key] || 0;
+      if (refs.length < limit && count < 4) {
+        refs.push(item.chunk);
+        diagnostics.push({
+          docId: item.chunk.docId, page: item.chunk.page, offset: item.chunk.offset,
+          fusedScore: item.score, bm25Rank: item.ranks.bm25 || null,
+          characterRank: item.ranks.character || null, phraseRank: item.ranks.phrase || null,
+          semanticRank: item.ranks.semantic || null, characterScore: item.characterScore,
+          phraseMatch: item.phraseMatch, semanticScore: item.semanticScore
+        });
+        pageCounts[key] = count + 1;
+      }
+    });
+
+    return {
+      references: refs,
+      overview: false,
+      queryWords: terms,
+      semanticUsed: semantic.length > 0,
+      semanticPages: semantic.map(function (item) {
+        return String(all[item.index].docId) + ':' + String(all[item.index].page);
+      }),
+      retrievalStats: {
+        bm25: bm25.length, character: character.length, phrase: phrase.length, semantic: semantic.length
+      },
+      retrievalDiagnostics: diagnostics
+    };
+  }
+
+
+  function shorten(value, max) {
+    var chars = Array.from(String(value || '').trim());
+    if (chars.length <= max) return chars.join('');
+    return chars.slice(0, Math.max(0, max - 1)).join('').trimEnd() + '…';
+  }
+
+  return {normalize: normalize, words: words, baseWords: baseWords, characterNgramCounts: characterNgramCounts, characterTfidfScores: characterTfidfScores, phraseTerms: phraseTerms, containsOrderedPhrase: containsOrderedPhrase, reciprocalRankFusion: reciprocalRankFusion, extractPdfText: extractPdfText, chunksForDocument: chunksForDocument, search: search, shorten: shorten};
+}));
+);
+      for (var size = 2; size <= 4; size++) {
+        for (var i = 0; i + size <= chars.length; i++) {
+          var gram = chars.slice(i, i + size).join('');
+          counts[gram] = (counts[gram] || 0) + 1;
+        }
+      }
+    });
+    return counts;
+  }
+
+  function tfWeight(count) {
+    return count > 0 ? 1 + Math.log(count) : 0;
+  }
+
+  function characterTfidfScores(query, chunks) {
+    var queryCounts = characterNgramCounts(query);
+    var queryGrams = Object.keys(queryCounts);
+    if (!queryGrams.length || !chunks.length) return chunks.map(function () { return 0; });
+
+    var chunkCounts = chunks.map(function (chunk) { return characterNgramCounts(chunk.text); });
+    var documentFrequency = Object.create(null);
+    chunkCounts.forEach(function (counts) {
+      Object.keys(counts).forEach(function (gram) {
+        documentFrequency[gram] = (documentFrequency[gram] || 0) + 1;
+      });
+    });
+
+    var queryVector = Object.create(null), queryNorm = 0;
+    queryGrams.forEach(function (gram) {
+      var idf = Math.log(1 + (chunks.length + 1) / ((documentFrequency[gram] || 0) + 1));
+      var weight = tfWeight(queryCounts[gram]) * idf;
+      queryVector[gram] = weight;
+      queryNorm += weight * weight;
+    });
+    queryNorm = Math.sqrt(queryNorm) || 1;
+
+    return chunkCounts.map(function (counts) {
+      var dot = 0, norm = 0;
+      Object.keys(counts).forEach(function (gram) {
+        var idf = Math.log(1 + (chunks.length + 1) / ((documentFrequency[gram] || 0) + 1));
+        var weight = tfWeight(counts[gram]) * idf;
+        norm += weight * weight;
+        if (queryVector[gram]) dot += queryVector[gram] * weight;
+      });
+      return norm ? dot / (queryNorm * Math.sqrt(norm)) : 0;
+    });
+  }
+
+  var PHRASE_STOP = new Set(('وظيفه وظيفة الفرق قارن مقارنة مقارنه بين انواع أنواع نوع ما ماذا ماهي هي هو هل اشرح شرح وضح توضيح عرف تعريف معنى معني كيف لماذا ليش سبب الاسباب explain define what function purpose compare comparison difference between types type of the a an is are and please tell me about').split(/\s+/));
+
+  function phraseTerms(text) {
+    return baseWords(text).filter(function (word) {
+      return word.length > 1 && !PHRASE_STOP.has(word);
+    });
+  }
+
+  function containsOrderedPhrase(chunkText, queryTerms) {
+    if (!queryTerms || queryTerms.length < 2) return false;
+    var candidates = baseWords(chunkText);
+    if (candidates.length < queryTerms.length) return false;
+    outer: for (var start = 0; start <= candidates.length - queryTerms.length; start++) {
+      for (var j = 0; j < queryTerms.length; j++) {
+        if (candidates[start + j] !== queryTerms[j]) continue outer;
+      }
+      return true;
+    }
+    return false;
+  }
+
+  // Reciprocal Rank Fusion combines ranked lists without assuming that their
+  // raw score scales are comparable (BM25 vs cosine similarity, for example).
+  function reciprocalRankFusion(rankings, constant) {
+    var k = Number.isFinite(Number(constant)) ? Math.max(1, Number(constant)) : 60;
+    var fused = new Map();
+    (rankings || []).forEach(function (ranking) {
+      (ranking || []).forEach(function (item, position) {
+        var index = typeof item === 'number' ? item : item.index;
+        if (!Number.isInteger(index)) return;
+        var entry = fused.get(index);
+        if (!entry) {
+          entry = {index: index, score: 0, ranks: Object.create(null)};
+          fused.set(index, entry);
+        }
+        entry.score += 1 / (k + position + 1);
+        if (item && typeof item === 'object' && item.signal) entry.ranks[item.signal] = position + 1;
+      });
+    });
+    return Array.from(fused.values()).sort(function (a, b) {
+      return b.score - a.score || a.index - b.index;
+    });
+  }
+
   function isOverview(query) {
     var q = normalize(query);
     return /(?:لخص|تلخيص|ملخص|اهم النقاط|اهم الافكار|الافكار الرئيسيه|الافكار المهمه|المواضيع|الموضوعات|جميع المواضيع|كل المواضيع|كامل المحتوى|المحتوى بالكامل|نظره عامه|فكره عامه|ملخصا|summari[sz]e|overview|key points|main points|main ideas|all topics|whole document|entire document|full reference)/.test(q);
