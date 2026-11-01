@@ -119,10 +119,15 @@ public final class MainActivity extends Activity {
                 || !"https".equalsIgnoreCase(uri.getScheme())
                 || !ASSET_HOST.equalsIgnoreCase(uri.getHost())
                 || (uri.getPort() != -1 && uri.getPort() != 443)
-                || uri.getUserInfo() != null) {
+                || !isReservedAssetAuthority(uri.getEncodedAuthority())) {
             return false;
         }
         return assetRelativePath(uri) != null;
+    }
+
+    private static boolean isReservedAssetAuthority(String authority) {
+        return authority != null && (ASSET_HOST.equalsIgnoreCase(authority)
+                || (ASSET_HOST + ":443").equalsIgnoreCase(authority));
     }
 
     /**
@@ -133,7 +138,7 @@ public final class MainActivity extends Activity {
         if (uri == null) return null;
         String path = uri.getPath();
         if (path == null || !path.startsWith(ASSET_PATH_PREFIX)
-                || path.indexOf('\\\\') >= 0 || path.indexOf('\u0000') >= 0) {
+                || path.indexOf('\\') >= 0 || path.indexOf((char) 0) >= 0) {
             return null;
         }
         String relative = path.substring(ASSET_PATH_PREFIX.length());
