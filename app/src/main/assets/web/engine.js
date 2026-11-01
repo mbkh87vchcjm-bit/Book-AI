@@ -195,25 +195,83 @@
     return lines.join('\n');
   }
   function chunksForDocument(doc, size, overlap) {
-    size = size || 850;
-    overlap = overlap === undefined ? 110 : overlap;
+    size = Number(size) > 0 ? Number(size) : 850;
+    overlap = overlap === undefined ? 110 : Math.max(0, Number(overlap) || 0);
     var out = [];
     (doc.pages || []).forEach(function (page) {
-      var text = String(page.text || '').trim();
-      var cursor = 0;
-      while (cursor < text.length) {
-        var end = Math.min(text.length, cursor + size);
-        if (end < text.length) {
-          var boundary = Math.max(text.lastIndexOf('\n', end), text.lastIndexOf(' ', end));
-          if (boundary > cursor + size * 0.55) end = boundary;
-        }
-        var piece = text.slice(cursor, end).trim();
-        if (piece) out.push({docId: doc.id, docName: doc.name, page: page.page, type: doc.type, text: piece, offset: cursor, ocr: !!page.ocr});
-        if (end >= text.length) break;
-        var next = Math.max(cursor + 1, end - overlap);
-        var wordStart = text.indexOf(' ', next);
-        cursor = wordStart > -1 && wordStart < end ? wordStart + 1 : next;
+      var source = String(page.text || '');
+      if (!source.trim()) return;
+      var units = [], lines = source.split(/\n/), offset = 0, paragraphStart = -1, paragraphEnd = -1;
+      function pushParagraph() {
+        if (paragraphStart < 0) return;
+        units.push({start: paragraphStart, end: paragraphEnd, kind: 'paragraph'});
+        paragraphStart = -1; paragraphEnd = -1;
       }
+      lines.forEach(function (line) {
+        var start = offset, end = start + line.length;
+        var trimmed = line.trim();
+        var heading = /^(?:#{1,6}\s+|(?:الفصل|الباب|الوحدة|الموضوع|chapter|section)\s+[\d٠-٩IVX.-]+|[\d٠-٩]+[.)-]\s+)[^.!؟?]{2,100}$/i.test(trimmed);
+        var bullet = /^(?:[•▪◦*–—-]|\d+\s*[.)-]|[أ-د]\s*[).-])\s+/.test(trimmed);
+        if (!trimmed) pushParagraph();
+        else if (heading || bullet) {
+          pushParagraph();
+          units.push({start: start + line.indexOf(trimmed), end: start + line.lastIndexOf(trimmed) + trimmed.length, kind: heading ? 'heading' : 'bullet'});
+        } else {
+          if (paragraphStart < 0) paragraphStart = start + line.indexOf(trimmed);
+          paragraphEnd = start + line.lastIndexOf(trimmed) + trimmed.length;
+          if (/[.!?؟؛:]\s*$/.test(trimmed)) pushParagraph();
+        }
+        offset = end + 1;
+      });
+      pushParagraph();
+
+      var segments = [];
+      units.forEach(function (unit) {
+        var cursor = unit.start;
+        while (cursor < unit.end) {
+          var end = Math.min(unit.end, cursor + size);
+          if (end < unit.end) {
+            var candidates = [
+              source.lastIndexOf('. ', end), source.lastIndexOf('؟ ', end),
+              source.lastIndexOf('؛ ', end), source.lastIndexOf('\n', end),
+              source.lastIndexOf(' ', end)
+            ];
+            var boundary = Math.max.apply(Math, candidates);
+            if (boundary >= cursor + size * 0.5) end = boundary + 1;
+          }
+          if (end <= cursor) end = Math.min(unit.end, cursor + size);
+          segments.push({start: cursor, end: end, kind: unit.kind});
+          if (end >= unit.end) break;
+          var next = Math.max(cursor + 1, end - overlap);
+          var space = source.indexOf(' ', next);
+          var newline = source.indexOf('\n', next);
+          var candidatesNext = [space, newline].filter(function (v) { return v > -1 && v < end; });
+          cursor = candidatesNext.length ? Math.max.apply(Math, candidatesNext) + 1 : next;
+        }
+      });
+
+      var pending = null;
+      function emit(segment) {
+        var raw = source.slice(segment.start, segment.end);
+        var leading = raw.length - raw.trimStart().length;
+        var trailing = raw.length - raw.trimEnd().length;
+        var start = segment.start + leading, end = segment.end - trailing;
+        var piece = source.slice(start, end);
+        if (!piece) return;
+        out.push({docId: doc.id, docName: doc.name, page: page.page, type: doc.type,
+          text: piece, offset: start, endOffset: end, structure: segment.kind,
+          ocr: !!page.ocr});
+      }
+      segments.forEach(function (segment) {
+        if (!pending) { pending = segment; return; }
+        var gap = source.slice(pending.end, segment.start);
+        var combined = source.slice(pending.start, segment.end);
+        if (combined.length <= size && gap.length <= 2 &&
+            pending.kind === 'paragraph' && segment.kind === 'paragraph') {
+          pending.end = segment.end;
+        } else { emit(pending); pending = segment; }
+      });
+      if (pending) emit(pending);
     });
     return out;
   }
