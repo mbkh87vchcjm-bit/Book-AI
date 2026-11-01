@@ -36,6 +36,48 @@ test('extracts multiple lines and preserves presentation-form normalization', ()
   ]), 'First line\nلا');
 });
 
+
+test('reconstructs Latin word gaps and preserves Arabic PDF spacing', () => {
+  assert.equal(E.extractPdfText([
+    {str:'Distributed',dir:'ltr',transform:[1,0,0,1,10,100],width:68,height:12},
+    {str:'Systems',dir:'ltr',transform:[1,0,0,1,82,100],width:40,height:12,hasEOL:true},
+  ]), 'Distributed Systems');
+
+  assert.equal(E.extractPdfText([
+    {str:'نظام ',dir:'rtl',transform:[1,0,0,1,100,100],width:22,height:12},
+    {str:'التشغيل',dir:'rtl',transform:[1,0,0,1,70,100],width:30,height:12,hasEOL:true},
+  ]), 'نظام التشغيل');
+
+  // A large geometric gap alone must not split fragmented Arabic word items.
+  assert.equal(E.extractPdfText([
+    {str:'ال',dir:'rtl',transform:[1,0,0,1,100,100],width:12,height:12},
+    {str:'جاذبية',dir:'rtl',transform:[1,0,0,1,70,100],width:20,height:12,hasEOL:true},
+  ]), 'الجاذبية');
+});
+
+
+test('does not split adjacent glyph fragments or add spaces before punctuation', () => {
+  assert.equal(E.extractPdfText([
+    {str:'Distri',dir:'ltr',transform:[1,0,0,1,10,100],width:30,height:12},
+    {str:'buted',dir:'ltr',transform:[1,0,0,1,40,100],width:25,height:12,hasEOL:true},
+  ]), 'Distributed');
+
+  assert.equal(E.extractPdfText([
+    {str:'Router',dir:'ltr',transform:[1,0,0,1,10,100],width:30,height:12},
+    {str:',',dir:'ltr',transform:[1,0,0,1,40,100],width:3,height:12},
+    {str:'device',dir:'ltr',transform:[1,0,0,1,47,100],width:30,height:12,hasEOL:true},
+  ]), 'Router, device');
+});
+
+test('detects a new PDF text line from baseline geometry even without hasEOL', () => {
+  assert.equal(E.extractPdfText([
+    {str:'First',dir:'ltr',transform:[1,0,0,1,10,100],width:22,height:12},
+    {str:'line',dir:'ltr',transform:[1,0,0,1,35,100],width:20,height:12},
+    {str:'Second',dir:'ltr',transform:[1,0,0,1,10,82],width:30,height:12},
+    {str:'line',dir:'ltr',transform:[1,0,0,1,43,82],width:20,height:12},
+  ]), 'First line\nSecond line');
+});
+
 test('finds the real PDF page and never substitutes an arbitrary page for a miss', () => {
   const hit = E.search([reference], 'ما هي الجاذبية؟');
   assert.equal(hit.references.length, 1);
