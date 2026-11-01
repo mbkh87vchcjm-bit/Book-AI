@@ -68,7 +68,7 @@ test('detects a new PDF text line from baseline geometry even without hasEOL', (
     {str:'line',dir:'ltr',transform:[1,0,0,1,35,100],width:20,height:12},
     {str:'Second',dir:'ltr',transform:[1,0,0,1,10,82],width:30,height:12},
     {str:'line',dir:'ltr',transform:[1,0,0,1,43,82],width:20,height:12},
-  ]), 'First line\\nSecond line');
+  ]), 'First line\nSecond line');
 });
 
 test('finds the real PDF page and never substitutes an arbitrary page for a miss', () => {
