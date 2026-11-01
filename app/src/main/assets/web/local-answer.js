@@ -134,9 +134,37 @@
     } catch (e) { return {error: e && e.message ? e.message : 'التعبير غير مدعوم'}; }
   }
 
+  // PDF.js emits line breaks at visual rows. Rejoin wrapped rows so a
+  // paragraph is not mistaken for several independent one-line sentences.
+  function joinWrappedLines(text) {
+    var lines = String(text || '').replace(/\r/g, '').split('\n');
+    var paragraphs = [], current = '';
+    function flush() {
+      if (current.trim()) paragraphs.push(current.trim());
+      current = '';
+    }
+    lines.forEach(function (raw) {
+      var line = String(raw || '').replace(/[ \t]+/g, ' ').trim();
+      if (!line) { flush(); return; }
+      var bullet = /^(?:[•▪◦*–—-]|\d+\s*[.)-]|[أ-د]\s*[).-])\s+/.test(line);
+      var previousEnded = /[.!?؟؛:]\s*$/.test(current);
+      if (current && (previousEnded || bullet)) flush();
+      if (bullet) {
+        current = line.replace(/^(?:[•▪◦*–—-]|\d+\s*[.)-]|[أ-د]\s*[).-])\s+/, '');
+        flush();
+      } else {
+        current = current ? current + ' ' + line : line;
+      }
+    });
+    flush();
+    return paragraphs.join('\n');
+  }
+
   function sentences(text) {
-    return (String(text || '').match(/[^.!؟\n]+[.!؟]?/g) || [])
-      .map(function (s) { return s.trim(); }).filter(function (s) { return s.length >= 8 && E.words(s).length; });
+    var normalized = joinWrappedLines(text);
+    return (normalized.match(/[^.!?؟؛\n]+[.!?؟؛]?/g) || [])
+      .map(function (s) { return s.trim(); })
+      .filter(function (s) { return s.length >= 8 && E.words(s).length >= 2; });
   }
 
   function selectSentences(documents, result, question, limit) {
@@ -154,20 +182,39 @@
           });
         });
       });
-      var count = Math.min(limit, sources.length), sampled = [];
-      for (var p = 0; p < count; p++) {
-        var pageIndex = count <= 1 ? 0 : Math.round(p * (sources.length - 1) / (count - 1));
-        var ref = sources[pageIndex];
-        var pageSentences = sentences(ref.text);
-        if (!pageSentences.length) continue;
-        pageSentences.sort(function (a, b) { return E.words(b).length - E.words(a).length; });
-        sampled.push({score: 1, order: pageIndex * 1000, text: pageSentences[0], ref: ref});
+      var pagePools = sources.map(function (ref, pageIndex) {
+        var pool = sentences(ref.text).filter(function (line) {
+          return E.words(line).length >= 4 || line.length >= 55;
+        });
+        pool.sort(function (a, b) {
+          return E.words(b).length - E.words(a).length || b.length - a.length;
+        });
+        return {ref: ref, pageIndex: pageIndex, sentences: pool.slice(0, 8)};
+      }).filter(function (pool) { return pool.sentences.length; });
+      var pageCount = Math.min(pagePools.length, limit), chosenPools = [];
+      for (var p = 0; p < pageCount; p++) {
+        var pageAt = pageCount <= 1 ? 0 : Math.round(p * (pagePools.length - 1) / (pageCount - 1));
+        chosenPools.push(pagePools[pageAt]);
+      }
+      var sampled = [], round = 0;
+      while (sampled.length < limit) {
+        var addedThisRound = 0;
+        chosenPools.forEach(function (pool) {
+          var sentence = pool.sentences[round];
+          if (sentence && sampled.length < limit) {
+            sampled.push({score: 1, order: pool.pageIndex * 1000 + round,
+              text: sentence, ref: pool.ref});
+            addedThisRound++;
+          }
+        });
+        if (!addedThisRound) break;
+        round++;
       }
       return sampled.sort(function (a, b) { return a.order - b.order; });
     }
 
-    sources.slice(0, 120).forEach(function (ref, pageOrder) {
-      sentences(ref.text).slice(0, 160).forEach(function (text, index) {
+    sources.slice(0, 240).forEach(function (ref, pageOrder) {
+      sentences(ref.text).slice(0, 300).forEach(function (text, index) {
         var terms = E.words(text);
         var matched = new Set(terms.filter(function (w) { return q.has(w); }));
         var pageKey = String(ref.docId || ref.docName) + ':' + String(ref.page);
@@ -185,7 +232,7 @@
       var key = E.normalize(item.text);
       var pageKey = String(item.ref.docId || item.ref.docName) + ':' + item.ref.page;
       var pageCount = perPage[pageKey] || 0;
-      if (chosen.length < limit && !seen.has(key) && pageCount < 4) {
+      if (chosen.length < limit && !seen.has(key) && pageCount < 8) {
         chosen.push(item);
         seen.add(key);
         perPage[pageKey] = pageCount + 1;
@@ -303,14 +350,31 @@
     return refs;
   }
 
+  function parseComparisonPair(question) {
+    var q = String(question || '').replace(/\s+/g, ' ').trim();
+    var match = q.match(/بين\s+(.+?)\s+و\s*(.+?)(?:[؟?!؛;.]|$)/i);
+    if (!match) match = q.match(/between\s+(.+?)\s+and\s+(.+?)(?:[?!.;]|$)/i);
+    if (!match) match = q.match(/compare\s+(.+?)\s+(?:with|and|vs\.?|versus)\s+(.+?)(?:[?!.;]|$)/i);
+    if (!match) match = q.match(/(.+?)\s+(?:vs\.?|versus)\s+(.+?)(?:[?!.;]|$)/i);
+    if (!match) return [];
+    function clean(value) {
+      return String(value || '').replace(/^[\s،,:؛-]+|[\s،,:؛?.!]+$/g, '')
+        .replace(/^(?:و|مع|between|compare)\s*/i, '')
+        .replace(/\s+(?:بالتفصيل|بشكل كامل|كامل|من حيث|في المرجع)$/i, '')
+        .trim();
+    }
+    var left = clean(match[1]), right = clean(match[2]);
+    return left && right && E.normalize(left) !== E.normalize(right) ? [left, right] : [];
+  }
+
   function buildComparisonAnswer(docs, queryObj, question, limit, options) {
     var entities = (queryObj.entities || []).slice(0, 2);
     if (entities.length < 2) return null;
 
     var groups = [];
-    var perEntityLimit = Math.max(8, Math.min(18, Math.ceil(limit / 2)));
+    var perEntityLimit = Math.max(12, Math.min(30, Math.ceil(limit / 2)));
     entities.forEach(function (entity) {
-      var found = E.search(docs, entity, 30, '', options.learningStore, options.semanticModel);
+      var found = E.search(docs, entity, 60, '', options.learningStore, options.semanticModel);
       var selected = selectSentences(docs, found, entity, perEntityLimit);
       if (!selected.length && found.references && found.references.length) {
         selected = found.references.map(function (ref) { return {text: ref.text, ref: ref}; });
@@ -440,7 +504,10 @@
     var question = String(options.question || '').trim();
     var docs = options.documents || [];
     var strict = options.mode === 'strict';
-    var limit = Math.max(1, Math.min(40, Number(options.maxSentences) || 24));
+    var limit = Math.max(1, Math.min(60, Number(options.maxSentences) || 36));
+    if (/(?:شرح كامل|اشرح.*(?:بالتفصيل|بشكل كامل|كامل|موسع)|بالتفصيل الشامل|full explanation|in detail|comprehensive explanation)/i.test(question)) {
+      limit = Math.max(limit, 48);
+    }
 
     if (!strict && options.allowMath !== false) {
       var calculation = calculate(question);
@@ -451,6 +518,11 @@
 
     // Step 1: Query Understanding
     var queryObj = QueryModule ? QueryModule.parseQuery(question, lexicon) : { language: 'ar', intent: 'general', entities: [] };
+    var comparisonPair = parseComparisonPair(question);
+    if (comparisonPair.length === 2) {
+      queryObj.entities = comparisonPair;
+      queryObj.intent = 'comparison';
+    }
 
     var kb = new KnowledgeModule.KnowledgeBase();
     docs.forEach(function (doc) {
@@ -488,7 +560,7 @@
     // Step 2: Broad retrieval. The rule-based fact extractor only recognizes a
     // narrow set of sentence patterns, so it must not decide that a comparison side
     // is absent merely because its pattern did not match.
-    var found = E.search(docs, question, 50, options.priorQuestion || '', options.learningStore, options.semanticModel);
+    var found = E.search(docs, question, 120, options.priorQuestion || '', options.learningStore, options.semanticModel);
 
     if (queryObj.intent === 'comparison') {
       var comparison = buildComparisonAnswer(docs, queryObj, question, limit, options);
@@ -509,7 +581,7 @@
       return {
         text: strict && !docs.length
           ? 'أضف مرجعًا أولًا؛ وضع المصادر فقط لا يجيب من خارجها.'
-          : 'لم أجد معلومات كافية في المراجع المستوردة للإجابة عن هذا السؤال.',
+          : 'لم أتمكن من استرجاع دليل واضح لهذا السؤال من النص المستخرج. هذا لا يثبت أن المعلومة غير موجودة في الملف؛ قد تكون الصياغة مختلفة أو في صفحة لم تُقرأ جيدًا. افتح نص الصفحات ذات الصلة وتحقق من الاستخراج أو صحح النص ثم أعد السؤال.',
         origin: 'miss',
         references: []
       };
@@ -523,6 +595,8 @@
     calculate: calculate,
     extractExpression: extractExpression,
     parseLinear: parseLinear,
-    sentences: sentences
+    sentences: sentences,
+    joinWrappedLines: joinWrappedLines,
+    parseComparisonPair: parseComparisonPair
   };
 }));
