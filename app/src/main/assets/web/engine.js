@@ -261,7 +261,6 @@
     rawTerms.forEach(function (term) { termWeights[term] = 1.0; });
     var lexicon = getLexicon();
     if (lexicon) {
-      var normalizedQuery = normalize(query);
       var queryTokens = normalizedQuery.match(/[a-z0-9\u0621-\u063a\u0641-\u064a]+/g) || [];
       for (var length = 4; length >= 1; length--) {
         for (var start = 0; start <= queryTokens.length - length; start++) {
@@ -279,6 +278,7 @@
     }
 
     var terms = Object.keys(termWeights);
+    var normalizedQuery = normalize(query);
     var k1 = 1.2, b = 0.75;
     var tokenSets = all.map(function (chunk) { return words(chunk.text); });
     var docLengths = tokenSets.map(function (tokens) { return tokens.length; });
@@ -314,9 +314,9 @@
 
     // Signal 2: character TF-IDF cosine. It is useful for spelling variants and
     // small OCR/edit-distance errors, but short words are handled by BM25 instead.
-    var characterScores = characterTfidfScores(query, all);
+    var characterScores = characterTfidfScores(phraseTerms(query).join(' ') || query, all);
     var maxCharacterScore = characterScores.reduce(function (max, score) { return Math.max(max, score); }, 0);
-    var characterCutoff = Math.max(0.06, maxCharacterScore * 0.28);
+    var characterCutoff = Math.max(0.18, maxCharacterScore * 0.28);
     var character = characterScores.map(function (score, index) {
       return {index: index, score: score, signal: 'character'};
     }).filter(function (item) {
@@ -349,9 +349,6 @@
     // RRF fuses independent ranked lists. Raw BM25 and cosine scores are never
     // added together because their numerical scales are not comparable.
     var fused = reciprocalRankFusion([bm25, character, phrase, semantic], 60);
-    var fusedByIndex = new Map();
-    fused.forEach(function (item) { fusedByIndex.set(item.index, item); });
-
     var ranked = fused.map(function (item) {
       return {
         chunk: all[item.index],
