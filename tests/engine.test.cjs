@@ -196,3 +196,30 @@ test('character n-grams do not turn unrelated short references into matches', ()
   ]}];
   assert.deepEqual(E.search(docs, 'zzqxvplm', 5).references, []);
 });
+
+
+test('structure-aware chunks preserve headings, bullets, offsets and page provenance', () => {
+  const source = '# Routing\nRouting selects a path for packets.\n\n• Static routing uses fixed routes.\n• Dynamic routing learns routes.';
+  const doc = {id:'structured',name:'Networks.pdf',type:'pdf',pages:[{page:9,text:source,ocr:true}]};
+  const chunks = E.chunksForDocument(doc, 80, 12);
+  assert.ok(chunks.some(c => c.structure === 'heading' && c.text === '# Routing'));
+  assert.equal(chunks.filter(c => c.structure === 'bullet').length, 2);
+  for (const chunk of chunks) {
+    assert.equal(source.slice(chunk.offset, chunk.endOffset), chunk.text);
+    assert.equal(chunk.page, 9);
+    assert.equal(chunk.docId, 'structured');
+    assert.equal(chunk.ocr, true);
+  }
+});
+
+test('structure-aware chunking splits long paragraphs with overlapping source offsets', () => {
+  const source = 'This is sentence one with enough words. This is sentence two with enough words. This is sentence three with enough words.';
+  const chunks = E.chunksForDocument({id:'long',name:'long.txt',type:'text',pages:[{page:2,text:source}]}, 55, 15);
+  assert.ok(chunks.length > 1);
+  assert.ok(chunks.every(c => source.slice(c.offset,c.endOffset) === c.text));
+  assert.ok(chunks[1].offset < chunks[0].endOffset);
+});
+
+test('structure-aware chunking returns no chunks for empty pages', () => {
+  assert.deepEqual(E.chunksForDocument({id:'empty',pages:[{page:1,text:'  \n  '}] }), []);
+});
