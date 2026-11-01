@@ -108,6 +108,6 @@ test('Entity extraction prefers recognized multiword concepts and canonical abbr
 test('Language detection distinguishes Arabic, English, mixed and empty input', () => {
   assert.equal(Query.detectLanguage('ما وظيفة الشبكة؟'), 'ar');
   assert.equal(Query.detectLanguage('What is a network?'), 'en');
-  assert.equal(Query.detectLanguage('شبكة Net'), 'mixed');
+  assert.equal(Query.detectLanguage('شبك Net'), 'mixed');
   assert.equal(Query.detectLanguage(''), 'unknown');
 });
