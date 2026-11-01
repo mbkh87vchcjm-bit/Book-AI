@@ -167,6 +167,47 @@
       .filter(function (s) { return s.length >= 8 && E.words(s).length >= 2; });
   }
 
+  // Maximal Marginal Relevance: balance relevance with lexical diversity.
+  // Token Jaccard is deliberately transparent and deterministic; it is not semantic similarity.
+  function selectDiverseItems(items, limit, lambda) {
+    var pool = (items || []).slice(), selected = [], seen = new Set(), perPage = {};
+    var weight = Number.isFinite(Number(lambda)) ? Math.max(0, Math.min(1, Number(lambda))) : 0.72;
+    var maxScore = pool.reduce(function (m, item) { return Math.max(m, Number(item.score) || 0); }, 0) || 1;
+    function tokenSet(item) { return new Set(E.words(item.text)); }
+    var tokenSets = new Map();
+    pool.forEach(function (item) { tokenSets.set(item, tokenSet(item)); });
+    function redundancy(candidate) {
+      var a = tokenSets.get(candidate), maximum = 0;
+      selected.forEach(function (chosen) {
+        var b = tokenSets.get(chosen), intersection = 0;
+        a.forEach(function (term) { if (b.has(term)) intersection++; });
+        var union = a.size + b.size - intersection;
+        if (union) maximum = Math.max(maximum, intersection / union);
+      });
+      return maximum;
+    }
+    while (pool.length && selected.length < Math.max(0, Number(limit) || 0)) {
+      var bestIndex = -1, bestValue = -Infinity;
+      pool.forEach(function (candidate, index) {
+        var key = E.normalize(candidate.text);
+        var pageKey = String(candidate.ref.docId || candidate.ref.docName) + ':' + candidate.ref.page;
+        if (!key || seen.has(key) || (perPage[pageKey] || 0) >= 8) return;
+        var relevance = Math.max(0, Number(candidate.score) || 0) / maxScore;
+        var value = weight * relevance - (1 - weight) * redundancy(candidate);
+        if (value > bestValue || (value === bestValue && candidate.order < (pool[bestIndex] || {}).order)) {
+          bestValue = value; bestIndex = index;
+        }
+      });
+      if (bestIndex < 0) break;
+      var item = pool.splice(bestIndex, 1)[0];
+      var normalized = E.normalize(item.text);
+      var page = String(item.ref.docId || item.ref.docName) + ':' + item.ref.page;
+      seen.add(normalized); perPage[page] = (perPage[page] || 0) + 1;
+      selected.push(item);
+    }
+    return selected;
+  }
+
   function selectSentences(documents, result, question, limit) {
     var q = new Set(E.words(question).concat(result.queryWords || [])), items = [];
     var semanticPages = new Set(result.semanticPages || []);
@@ -230,18 +271,7 @@
       });
     });
 
-    items.sort(function (a, b) { return b.score - a.score || a.order - b.order; });
-    var seen = new Set(), perPage = {}, chosen = [];
-    items.forEach(function (item) {
-      var key = E.normalize(item.text);
-      var pageKey = String(item.ref.docId || item.ref.docName) + ':' + item.ref.page;
-      var pageCount = perPage[pageKey] || 0;
-      if (chosen.length < limit && !seen.has(key) && pageCount < 8) {
-        chosen.push(item);
-        seen.add(key);
-        perPage[pageKey] = pageCount + 1;
-      }
-    });
+    var chosen = selectDiverseItems(items, limit, 0.72);
     // Present evidence in the original page order after relevance selection.
     chosen.sort(function (a, b) {
       var ad = String(a.ref.docId || a.ref.docName), bd = String(b.ref.docId || b.ref.docName);
@@ -600,6 +630,7 @@
     extractExpression: extractExpression,
     parseLinear: parseLinear,
     sentences: sentences,
+    selectDiverseItems: selectDiverseItems,
     joinWrappedLines: joinWrappedLines,
     parseComparisonPair: parseComparisonPair
   };
