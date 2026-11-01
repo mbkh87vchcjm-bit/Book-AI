@@ -2,6 +2,7 @@
 const {test} = require('node:test');
 const assert = require('node:assert/strict');
 const A = require('../app/src/main/assets/web/local-answer.js');
+const E = require('../app/src/main/assets/web/engine.js');
 const docs = [{id:'book',name:'الفيزياء.pdf',type:'pdf',pages:[
   {page:1,text:'الطاقة هي القدرة على بذل شغل.'},
   {page:2,text:'الجاذبية قوة تجذب الأجسام نحو الأرض. تسقط الأجسام باتجاه الأرض.',ocr:true},
@@ -166,4 +167,78 @@ test('groups detailed answer evidence under descriptive role headings', () => {
   assert.match(result.text,/التعريف والفكرة الأساسية/);
   assert.match(result.text,/الوظيفة والاستخدام/);
   assert.match(result.text,/آلية العمل والخطوات/);
+});
+
+
+test('rejoins wrapped PDF visual lines into complete sentences', () => {
+  const wrapped = 'A router forwards packets through\nits routing table to the correct\nnetwork destination. It then selects\nan outgoing interface.';
+  const rebuilt = A.joinWrappedLines(wrapped);
+  assert.match(rebuilt, /through its routing table to the correct network destination/);
+  const parts = A.sentences(wrapped);
+  assert.equal(parts.length, 2);
+  assert.match(parts[0], /network destination/);
+  assert.match(parts[1], /outgoing interface/);
+});
+
+test('main ideas summary samples later pages and more than one sentence per page', () => {
+  const pages = Array.from({length:12}, (_, i) => ({
+    page: i + 1,
+    text: 'Topic ' + (i + 1) + ' explains the central mechanism and its important purpose. ' +
+      'The same topic also describes practical use and a key limitation in the system.'
+  }));
+  const result = A.answer({
+    documents:[{id:'ideas',name:'Ideas.pdf',type:'pdf',pages}],
+    question:'ما أهم الأفكار في هذه المراجع؟',
+    mode:'strict',
+    maxSentences:8
+  });
+  assert.equal(result.origin,'source');
+  assert.ok(result.references.some(ref=>ref.page >= 10), 'summary should include later document pages');
+  assert.ok(result.evidenceCount >= 8, 'summary should collect multiple evidence sentences');
+  assert.match(result.text,/Topic 12|Topic 11|Topic 10/);
+});
+
+test('retrieves relevant later chunks within a long single PDF page', () => {
+  const filler = Array.from({length:90}, (_, i) =>
+    'General networking information describes connected devices and communication services. ').join('');
+  const lateText = 'The quasar gateway performs packet forwarding using a destination route table. ' +
+    'This quasar mechanism selects the correct outgoing network interface for each datagram.';
+  const result = A.answer({
+    documents:[{id:'one-page',name:'LongPage.pdf',type:'pdf',pages:[{page:3,text:filler + lateText}]}],
+    question:'اشرح quasar gateway packet forwarding بالتفصيل',
+    mode:'strict',
+    maxSentences:12
+  });
+  assert.equal(result.origin,'source');
+  assert.match(result.text,/quasar gateway|quasar mechanism/);
+  assert.ok(result.evidenceCount >= 1);
+});
+
+test('compares arbitrary Arabic topics even when they are absent from the built-in lexicon', () => {
+  const docs=[{id:'concepts',name:'Concepts.pdf',type:'pdf',pages:[
+    {page:4,text:'التخزين المؤقت يحتفظ بالبيانات المستخدمة كثيرًا لتقليل زمن الوصول.'},
+    {page:5,text:'الذاكرة الافتراضية تسمح للبرامج باستخدام مساحة عناوين أكبر من الذاكرة الفعلية.'}
+  ]}];
+  const result=A.answer({
+    documents:docs,
+    question:'قارن بين التخزين المؤقت والذاكرة الافتراضية بالتفصيل',
+    mode:'strict',
+    maxSentences:24
+  });
+  assert.equal(result.origin,'source');
+  assert.equal(result.intent,'comparison');
+  assert.match(result.text,/التخزين المؤقت/);
+  assert.match(result.text,/الذاكرة الافتراضية/);
+  assert.ok(result.references.some(ref=>ref.page===4));
+  assert.ok(result.references.some(ref=>ref.page===5));
+});
+
+test('retrieval failure is not presented as proof that a fact is absent from the document', () => {
+  const result=A.answer({
+    documents:[{id:'weak',name:'Weak.pdf',type:'pdf',pages:[{page:1,text:'The document contains only a short unrelated introduction.'}]}],
+    question:'ما هو بروتوكول zentrix؟',
+    mode:'strict'
+  });
+  assert.equal(result.origin,'miss');
+  assert.match(result.text,/هذا لا يثبت أن المعلومة غير موجودة/);
 });
