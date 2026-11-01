@@ -36,6 +36,48 @@ test('extracts multiple lines and preserves presentation-form normalization', ()
   ]), 'First line\nلا');
 });
 
+
+test('reconstructs Latin word gaps and preserves Arabic PDF spacing', () => {
+  assert.equal(E.extractPdfText([
+    {str:'Distributed',dir:'ltr',transform:[1,0,0,1,10,100],width:68,height:12},
+    {str:'Systems',dir:'ltr',transform:[1,0,0,1,82,100],width:40,height:12,hasEOL:true},
+  ]), 'Distributed Systems');
+
+  assert.equal(E.extractPdfText([
+    {str:'نظام ',dir:'rtl',transform:[1,0,0,1,100,100],width:22,height:12},
+    {str:'التشغيل',dir:'rtl',transform:[1,0,0,1,70,100],width:30,height:12,hasEOL:true},
+  ]), 'نظام التشغيل');
+
+  // A large geometric gap alone must not split fragmented Arabic word items.
+  assert.equal(E.extractPdfText([
+    {str:'ال',dir:'rtl',transform:[1,0,0,1,100,100],width:12,height:12},
+    {str:'جاذبية',dir:'rtl',transform:[1,0,0,1,70,100],width:20,height:12,hasEOL:true},
+  ]), 'الجاذبية');
+});
+
+
+test('does not split adjacent glyph fragments or add spaces before punctuation', () => {
+  assert.equal(E.extractPdfText([
+    {str:'Distri',dir:'ltr',transform:[1,0,0,1,10,100],width:30,height:12},
+    {str:'buted',dir:'ltr',transform:[1,0,0,1,40,100],width:25,height:12,hasEOL:true},
+  ]), 'Distributed');
+
+  assert.equal(E.extractPdfText([
+    {str:'Router',dir:'ltr',transform:[1,0,0,1,10,100],width:30,height:12},
+    {str:',',dir:'ltr',transform:[1,0,0,1,40,100],width:3,height:12},
+    {str:'device',dir:'ltr',transform:[1,0,0,1,47,100],width:30,height:12,hasEOL:true},
+  ]), 'Router, device');
+});
+
+test('detects a new PDF text line from baseline geometry even without hasEOL', () => {
+  assert.equal(E.extractPdfText([
+    {str:'First',dir:'ltr',transform:[1,0,0,1,10,100],width:22,height:12},
+    {str:'line',dir:'ltr',transform:[1,0,0,1,35,100],width:20,height:12},
+    {str:'Second',dir:'ltr',transform:[1,0,0,1,10,82],width:30,height:12},
+    {str:'line',dir:'ltr',transform:[1,0,0,1,43,82],width:20,height:12},
+  ]), 'First line\nSecond line');
+});
+
 test('finds the real PDF page and never substitutes an arbitrary page for a miss', () => {
   const hit = E.search([reference], 'ما هي الجاذبية؟');
   assert.equal(hit.references.length, 1);
@@ -102,4 +144,55 @@ test('semantic reranking can retrieve a high-confidence related passage without 
   const result = E.search(docs,'explain packet forwarding',10,'',null,model);
   assert.ok(result.references.some(ref => ref.page === 1));
   assert.ok(result.semanticUsed);
+});
+
+
+test('character TF-IDF retrieves a close Arabic spelling variant when BM25 has no exact token', () => {
+  const docs = [{id:'typo',name:'Arabic.pdf',type:'pdf',pages:[
+    {page:1,text:'التوجية في الشبكات يساعد على اختيار المسار المناسب.'},
+    {page:2,text:'قواعد البيانات تخزن السجلات في جداول مترابطة.'}
+  ]}];
+  const result = E.search(docs, 'التوجيه', 5);
+  assert.equal(result.references[0].page, 1);
+  assert.ok(result.retrievalStats.character > 0);
+  assert.ok(result.retrievalDiagnostics[0].characterRank > 0);
+});
+
+test('ordered phrase matching contributes a distinct retrieval signal', () => {
+  const docs = [{id:'phrase',name:'Protocols.pdf',type:'pdf',pages:[
+    {page:1,text:'بروتوكول في الشبكات يختار المسار ويعمل على التحكم بمرور البيانات ونقلها.'},
+    {page:2,text:'بروتوكول التحكم بالنقل Transmission Control Protocol يوفر نقلًا موثوقًا.'}
+  ]}];
+  const result = E.search(docs, 'بروتوكول التحكم بالنقل', 5);
+  assert.ok(result.retrievalStats.phrase > 0);
+  assert.equal(result.references[0].page, 2);
+  assert.equal(result.retrievalDiagnostics[0].phraseMatch, true);
+});
+
+test('reciprocal rank fusion promotes a result supported by independent retrievers', () => {
+  const fused = E.reciprocalRankFusion([
+    [{index:0,signal:'bm25'},{index:1,signal:'bm25'}],
+    [{index:1,signal:'character'},{index:2,signal:'character'}],
+    [{index:1,signal:'phrase'}]
+  ]);
+  assert.equal(fused[0].index, 1);
+  assert.equal(fused[0].ranks.bm25, 2);
+  assert.equal(fused[0].ranks.character, 1);
+  assert.equal(fused[0].ranks.phrase, 1);
+});
+
+test('hybrid retrieval preserves BM25 matches and reports component statistics', () => {
+  const result = E.search([reference], 'الجاذبية', 5);
+  assert.equal(result.references[0].page, 2);
+  assert.ok(result.retrievalStats.bm25 > 0);
+  assert.ok(Array.isArray(result.retrievalDiagnostics));
+  assert.ok(result.retrievalDiagnostics[0].fusedScore > 0);
+});
+
+test('character n-grams do not turn unrelated short references into matches', () => {
+  const docs = [{id:'tiny',name:'Tiny.pdf',type:'pdf',pages:[
+    {page:1,text:'الفيزياء تدرس الطاقة والحركة والقوة.'},
+    {page:2,text:'قواعد البيانات تنظم السجلات والجداول.'}
+  ]}];
+  assert.deepEqual(E.search(docs, 'zzqxvplm', 5).references, []);
 });
