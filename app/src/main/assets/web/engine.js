@@ -154,7 +154,11 @@
           var height = Math.max(metrics(previous).height, metrics(item).height);
           var gapThreshold = Math.max(1.25, height * 0.20);
           var hasExplicitSpace = /\s$/.test(previousText) || /^\s/.test(piece);
+          var joinsArabicFragments = /[\u0600-\u06ff]$/.test(previousText) &&
+            /^[\u0600-\u06ff]/.test(piece) &&
+            (Array.from(previousText.trim()).length <= 2 || Array.from(piece.trim()).length <= 2);
           if (!hasExplicitSpace &&
+              !joinsArabicFragments &&
               !beginsWithClosingPunctuation(piece) &&
               !endsWithOpeningPunctuation(previousText) &&
               gap !== null && gap > gapThreshold) {
