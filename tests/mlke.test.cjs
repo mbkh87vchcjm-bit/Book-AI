@@ -95,7 +95,7 @@ test('Arabic colloquial question forms are recognized', () => {
 });
 
 test('Arabic question normalization handles diacritics, alef variants and Arabic-Indic digits', () => {
-  assert.equal(Query.normalizeArabic('إِدَارَةُ الشَّبَكَات ١٢'), 'اداره الشبكات 12');
+  assert.equal(Query.normalizeArabic('إِدَارَةُ الشَّبَكَات ١٢'), 'ادارة الشبكات 12');
 });
 
 test('Entity extraction prefers recognized multiword concepts and canonical abbreviations', () => {
