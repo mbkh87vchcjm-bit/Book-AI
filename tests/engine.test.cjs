@@ -223,3 +223,41 @@ test('structure-aware chunking splits long paragraphs with overlapping source of
 test('structure-aware chunking returns no chunks for empty pages', () => {
   assert.deepEqual(E.chunksForDocument({id:'empty',pages:[{page:1,text:'  \n  '}] }), []);
 });
+
+const AnswerForMmr = require('../app/src/main/assets/web/local-answer.js');
+function mmrItem(text, score, order, page = 1) {
+  return {text,score,order,ref:{docId:'doc',docName:'doc.pdf',page}};
+}
+
+test('MMR rejects near-duplicate evidence when a relevant distinct passage exists', () => {
+  const selected = AnswerForMmr.selectDiverseItems([
+    mmrItem('Routing selects the best path for network packets.',10,0),
+    mmrItem('Routing selects the best path for network packets efficiently.',9.8,1),
+    mmrItem('A router forwards packets between different networks.',8,2)
+  ],2,0.72);
+  assert.equal(selected.length,2);
+  assert.ok(selected.some(x => x.order === 2));
+});
+
+test('MMR lambda one preserves pure relevance ranking', () => {
+  const selected = AnswerForMmr.selectDiverseItems([
+    mmrItem('Database tables store related records.',10,0),
+    mmrItem('Database tables store related records in rows.',9,1)
+  ],1,1);
+  assert.equal(selected[0].order,0);
+});
+
+test('MMR handles one candidate and empty results', () => {
+  assert.equal(AnswerForMmr.selectDiverseItems([mmrItem('A single useful passage.',3,0)],4).length,1);
+  assert.deepEqual(AnswerForMmr.selectDiverseItems([],5),[]);
+});
+
+test('MMR lambda zero favors lexical novelty after the first result', () => {
+  const selected = AnswerForMmr.selectDiverseItems([
+    mmrItem('TCP provides reliable transport between hosts.',10,0),
+    mmrItem('TCP provides reliable transport between network hosts.',9,1),
+    mmrItem('DNS resolves a domain name to an IP address.',2,2)
+  ],2,0);
+  assert.equal(selected.length,2);
+  assert.equal(selected[1].order,2);
+});
