@@ -325,47 +325,44 @@
   function search(documents, query, limit, priorQuery, learningStore, semanticModel) {
     limit = Math.max(1, Math.min(120, Number(limit) || 3));
     var all = [];
-    (documents || []).forEach(function (d) { all = all.concat(chunksForDocument(d)); });
-    if (!all.length) return { references: [], overview: false, queryWords: [] };
+    (documents || []).forEach(function (doc) { all = all.concat(chunksForDocument(doc)); });
+    var emptyStats = {bm25: 0, character: 0, phrase: 0, semantic: 0};
+    if (!all.length) return {references: [], overview: false, queryWords: [], retrievalStats: emptyStats};
 
     var rawTerms = words(query);
     if (!rawTerms.length && priorQuery) rawTerms = words(priorQuery);
     var overview = isOverview(query);
-
     if (overview) {
-      var seen = new Set();
-      var pages = all.filter(function (c) {
-        var key = c.docId + ':' + c.page;
-        if (seen.has(key)) return false;
-        seen.add(key); return true;
+      var seenPages = new Set();
+      var pages = all.filter(function (chunk) {
+        var key = chunk.docId + ':' + chunk.page;
+        if (seenPages.has(key)) return false;
+        seenPages.add(key);
+        return true;
       });
       var sampleCount = Math.min(limit, pages.length), samples = [];
       for (var pageIndex = 0; pageIndex < sampleCount; pageIndex++) {
         var chosenIndex = sampleCount <= 1 ? 0 : Math.round(pageIndex * (pages.length - 1) / (sampleCount - 1));
         samples.push(pages[chosenIndex]);
       }
-      return { references: samples, overview: true, queryWords: rawTerms };
+      return {references: samples, overview: true, queryWords: rawTerms, retrievalStats: emptyStats};
     }
-    if (!rawTerms.length) return { references: [], overview: false, queryWords: rawTerms };
-
-    // Weighted Query Expansion
-    var termWeights = {};
-    rawTerms.forEach(function (t) { termWeights[t] = 1.0; });
+    if (!rawTerms.length) return {references: [], overview: false, queryWords: rawTerms, retrievalStats: emptyStats};
 
     var normalizedQuery = normalize(query);
+    var termWeights = Object.create(null);
+    rawTerms.forEach(function (term) { termWeights[term] = 1.0; });
     var lexicon = getLexicon();
     if (lexicon) {
-      var normQuery = normalize(query);
-      var wordsInQuery = normQuery.match(/[a-z0-9\u0621-\u063a\u0641-\u064a]+/g) || [];
-      for (var len = 4; len >= 1; len--) {
-        for (var i = 0; i <= wordsInQuery.length - len; i++) {
-          var phrase = wordsInQuery.slice(i, i + len).join(' ');
-          var match = lexicon.lookupTerm(phrase);
+      var queryTokens = normalizedQuery.match(/[a-z0-9\u0621-\u063a\u0641-\u064a]+/g) || [];
+      for (var length = 4; length >= 1; length--) {
+        for (var startToken = 0; startToken <= queryTokens.length - length; startToken++) {
+          var phraseToken = queryTokens.slice(startToken, startToken + length).join(' ');
+          var match = lexicon.lookupTerm(phraseToken);
           if (match) {
-            var expansions = lexicon.expandQueryTerms(phrase);
-            expansions.forEach(function (exp) {
-              words(exp).forEach(function (w) {
-                if (!termWeights[w]) termWeights[w] = 0.75;
+            lexicon.expandQueryTerms(phraseToken).forEach(function (expansion) {
+              words(expansion).forEach(function (word) {
+                if (!termWeights[word]) termWeights[word] = 0.75;
               });
             });
           }
@@ -373,68 +370,113 @@
       }
     }
 
-    var terms = Object.keys(termWeights);
-
-    // Standard BM25 Scoring Formula
-    var k1 = 1.2, b = 0.75;
-    var tokenSets = all.map(function (c) { return words(c.text); });
-    var docLengths = tokenSets.map(function (ts) { return ts.length; });
-    var avgDocLength = docLengths.reduce(function (a, b) { return a + b; }, 0) / (all.length || 1);
-
-    var df = {};
+    var terms = Object.keys(termWeights), k1 = 1.2, b = 0.75;
+    var tokenSets = all.map(function (chunk) { return words(chunk.text); });
+    var docLengths = tokenSets.map(function (tokens) { return tokens.length; });
+    var avgDocLength = docLengths.reduce(function (sum, length) { return sum + length; }, 0) / (all.length || 1);
+    var df = Object.create(null);
     terms.forEach(function (term) {
-      df[term] = tokenSets.reduce(function (n, ts) { return n + (ts.indexOf(term) >= 0 ? 1 : 0); }, 0);
+      df[term] = tokenSets.reduce(function (count, tokens) {
+        return count + (tokens.indexOf(term) >= 0 ? 1 : 0);
+      }, 0);
     });
 
-    var normalizedQuery = normalize(query);
-    var scored = all.map(function (chunk, i) {
-      var ts = tokenSets[i], docLen = docLengths[i], score = 0, matched = 0, semanticScore = 0;
-      if (semanticModel && typeof semanticModel.similarity === 'function') {
-        try { semanticScore = Math.max(0, Math.min(1, Number(semanticModel.similarity(query, chunk.text)) || 0)); }
-        catch (_) { semanticScore = 0; }
-      }
+    // Signal 1: BM25 lexical retrieval. Query expansion and user-learned term
+    // weights remain local to this signal and never erase independent matches.
+    var bm25Scores = all.map(function (chunk, index) {
+      var tokens = tokenSets[index], length = docLengths[index], score = 0, matched = 0;
       terms.forEach(function (term) {
-        var tf = ts.reduce(function (n, token) { return n + (token === term ? 1 : 0); }, 0);
-        if (tf) {
-          matched++;
-          var nDocs = all.length;
-          var idf = Math.log(1 + (nDocs - df[term] + 0.5) / (df[term] + 0.5));
-          var termScore = idf * ((tf * (k1 + 1)) / (tf + k1 * (1 - b + b * (docLen / (avgDocLength || 1)))));
-          var learnedWeight = (learningStore && learningStore.getTermWeight) ? learningStore.getTermWeight(term) : 1.0;
-          score += termScore * (termWeights[term] || 0.5) * learnedWeight;
-        }
+        var tf = tokens.reduce(function (count, token) { return count + (token === term ? 1 : 0); }, 0);
+        if (!tf) return;
+        matched++;
+        var idf = Math.log(1 + (all.length - df[term] + 0.5) / (df[term] + 0.5));
+        var termScore = idf * ((tf * (k1 + 1)) /
+          (tf + k1 * (1 - b + b * (length / (avgDocLength || 1)))));
+        var learnedWeight = learningStore && learningStore.getTermWeight
+          ? learningStore.getTermWeight(term) : 1.0;
+        score += termScore * (termWeights[term] || 0.5) * learnedWeight;
       });
+      if (normalizedQuery.length >= 4 && normalize(chunk.text).indexOf(normalizedQuery) >= 0) score *= 2;
+      return {index: index, score: score, matched: matched};
+    }).filter(function (item) { return item.score > 0; })
+      .sort(function (a, b) { return b.score - a.score || b.matched - a.matched || all[a.index].offset - all[b.index].offset; });
+    var bm25 = bm25Scores.map(function (item) { return {index: item.index, signal: 'bm25'}; });
 
-      var normalizedChunkText = normalize(chunk.text);
-      if (normalizedQuery.length >= 4 && normalizedChunkText.indexOf(normalizedQuery) >= 0) {
-        score *= 2.0;
-      }
+    // Signal 2: character TF-IDF cosine over 2–4 character n-grams.
+    var charQuery = phraseTerms(query).join(' ') || query;
+    var characterScores = characterTfidfScores(charQuery, all);
+    var maxCharacterScore = characterScores.reduce(function (max, score) { return Math.max(max, score); }, 0);
+    var characterCutoff = Math.max(0.18, maxCharacterScore * 0.28);
+    var character = characterScores.map(function (score, index) {
+      return {index: index, score: score, signal: 'character'};
+    }).filter(function (item) {
+      return item.score >= characterCutoff && item.score > 0;
+    }).sort(function (a, b) { return b.score - a.score || a.index - b.index; })
+      .slice(0, Math.max(20, limit * 5));
 
-      var required = terms.length >= 3 ? 1 : 1;
-      if (matched < required && semanticScore < 0.78) score = 0;
-      if (semanticScore >= 0.78) score += semanticScore * 1.8;
-      return {chunk: chunk, score: score, matched: matched, semanticScore: semanticScore};
-    }).filter(function (x) { return x.score > 0; })
-      .sort(function (a, b) { return b.score - a.score || b.matched - a.matched || a.chunk.offset - b.chunk.offset; });
+    // Signal 3: exact ordered phrase match after conservative question-word removal.
+    var phraseQuery = phraseTerms(query), phrase = [];
+    if (phraseQuery.length >= 2) {
+      all.forEach(function (chunk, index) {
+        if (containsOrderedPhrase(chunk.text, phraseQuery)) phrase.push({index: index, signal: 'phrase'});
+      });
+    }
 
-    var pageCounts = Object.create(null);
-    var refs = [];
-    scored.forEach(function (x) {
-      var key = x.chunk.docId + ':' + x.chunk.page;
+    // Signal 4: vote only for high-confidence local semantic matches.
+    var semanticScores = all.map(function (chunk) {
+      if (!semanticModel || typeof semanticModel.similarity !== 'function') return 0;
+      try {
+        return Math.max(0, Math.min(1, Number(semanticModel.similarity(query, chunk.text)) || 0));
+      } catch (_) { return 0; }
+    });
+    var semantic = semanticScores.map(function (score, index) { return {index: index, score: score}; })
+      .filter(function (item) { return item.score >= 0.78; })
+      .sort(function (a, b) { return b.score - a.score || a.index - b.index; })
+      .map(function (item) { return {index: item.index, signal: 'semantic'}; });
+
+    // RRF fuses rank lists without adding incomparable raw score scales.
+    var fused = reciprocalRankFusion([bm25, character, phrase, semantic], 60);
+    var ranked = fused.map(function (item) {
+      var lexical = bm25Scores.find(function (candidate) { return candidate.index === item.index; });
+      return {
+        chunk: all[item.index], score: item.score,
+        bm25Score: lexical ? lexical.score : 0,
+        characterScore: characterScores[item.index] || 0,
+        phraseMatch: !!item.ranks.phrase,
+        semanticScore: semanticScores[item.index] || 0,
+        matched: lexical ? lexical.matched : 0,
+        ranks: item.ranks
+      };
+    });
+
+    var pageCounts = Object.create(null), refs = [], diagnostics = [];
+    ranked.forEach(function (item) {
+      var key = item.chunk.docId + ':' + item.chunk.page;
       var count = pageCounts[key] || 0;
-      // A single PDF page can contain several independent chunks. Returning
-      // only its first chunk silently discarded most of long explanations.
       if (refs.length < limit && count < 4) {
-        refs.push(x.chunk);
+        refs.push(item.chunk);
+        diagnostics.push({
+          docId: item.chunk.docId, page: item.chunk.page, offset: item.chunk.offset,
+          fusedScore: item.score, bm25Rank: item.ranks.bm25 || null,
+          characterRank: item.ranks.character || null, phraseRank: item.ranks.phrase || null,
+          semanticRank: item.ranks.semantic || null, characterScore: item.characterScore,
+          phraseMatch: item.phraseMatch, semanticScore: item.semanticScore
+        });
         pageCounts[key] = count + 1;
       }
     });
 
-    return {references: refs, overview: false, queryWords: terms,
-      semanticUsed: !!(semanticModel && scored.some(function (item) { return item.semanticScore >= 0.78; })),
-      semanticPages: scored.filter(function (item) { return item.semanticScore >= 0.78; }).map(function (item) {
-        return String(item.chunk.docId) + ':' + String(item.chunk.page);
-      })};
+    return {
+      references: refs,
+      overview: false,
+      queryWords: terms,
+      semanticUsed: semantic.length > 0,
+      semanticPages: semantic.map(function (item) {
+        return String(all[item.index].docId) + ':' + String(all[item.index].page);
+      }),
+      retrievalStats: {bm25: bm25.length, character: character.length, phrase: phrase.length, semantic: semantic.length},
+      retrievalDiagnostics: diagnostics
+    };
   }
 
   function shorten(value, max) {
@@ -443,5 +485,5 @@
     return chars.slice(0, Math.max(0, max - 1)).join('').trimEnd() + '…';
   }
 
-  return {normalize: normalize, words: words, baseWords: baseWords, extractPdfText: extractPdfText, chunksForDocument: chunksForDocument, search: search, shorten: shorten};
+  return {normalize: normalize, words: words, baseWords: baseWords, characterNgramCounts: characterNgramCounts, characterTfidfScores: characterTfidfScores, phraseTerms: phraseTerms, containsOrderedPhrase: containsOrderedPhrase, reciprocalRankFusion: reciprocalRankFusion, extractPdfText: extractPdfText, chunksForDocument: chunksForDocument, search: search, shorten: shorten};
 }));
