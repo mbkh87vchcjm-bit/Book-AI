@@ -135,11 +135,11 @@
 
   function isOverview(query) {
     var q = normalize(query);
-    return /(?:لخص|تلخيص|ملخص|اهم النقاط|نظره عامه|فكره عامه|ملخصا|summari[sz]e|overview|key points|main points)/.test(q);
+    return /(?:لخص|تلخيص|ملخص|اهم النقاط|اهم الافكار|الافكار الرئيسيه|الافكار المهمه|المواضيع|الموضوعات|جميع المواضيع|كل المواضيع|كامل المحتوى|المحتوى بالكامل|نظره عامه|فكره عامه|ملخصا|summari[sz]e|overview|key points|main points|main ideas|all topics|whole document|entire document|full reference)/.test(q);
   }
 
   function search(documents, query, limit, priorQuery, learningStore, semanticModel) {
-    limit = Math.max(1, Math.min(50, Number(limit) || 3));
+    limit = Math.max(1, Math.min(120, Number(limit) || 3));
     var all = [];
     (documents || []).forEach(function (d) { all = all.concat(chunksForDocument(d)); });
     if (!all.length) return { references: [], overview: false, queryWords: [] };
@@ -150,11 +150,16 @@
 
     if (overview) {
       var seen = new Set();
-      var samples = all.filter(function (c) {
+      var pages = all.filter(function (c) {
         var key = c.docId + ':' + c.page;
         if (seen.has(key)) return false;
         seen.add(key); return true;
-      }).slice(0, limit);
+      });
+      var sampleCount = Math.min(limit, pages.length), samples = [];
+      for (var pageIndex = 0; pageIndex < sampleCount; pageIndex++) {
+        var chosenIndex = sampleCount <= 1 ? 0 : Math.round(pageIndex * (pages.length - 1) / (sampleCount - 1));
+        samples.push(pages[chosenIndex]);
+      }
       return { references: samples, overview: true, queryWords: rawTerms };
     }
     if (!rawTerms.length) return { references: [], overview: false, queryWords: rawTerms };
@@ -227,11 +232,17 @@
     }).filter(function (x) { return x.score > 0; })
       .sort(function (a, b) { return b.score - a.score || b.matched - a.matched || a.chunk.offset - b.chunk.offset; });
 
-    var pages = new Set();
+    var pageCounts = Object.create(null);
     var refs = [];
     scored.forEach(function (x) {
       var key = x.chunk.docId + ':' + x.chunk.page;
-      if (refs.length < limit && !pages.has(key)) { pages.add(key); refs.push(x.chunk); }
+      var count = pageCounts[key] || 0;
+      // A single PDF page can contain several independent chunks. Returning
+      // only its first chunk silently discarded most of long explanations.
+      if (refs.length < limit && count < 4) {
+        refs.push(x.chunk);
+        pageCounts[key] = count + 1;
+      }
     });
 
     return {references: refs, overview: false, queryWords: terms,
