@@ -182,13 +182,17 @@
           });
         });
       });
+      var summarySentenceSeen = new Set();
       var pagePools = sources.map(function (ref, pageIndex) {
         var pool = sentences(ref.text).filter(function (line) {
-          return E.words(line).length >= 4 || line.length >= 55;
+          if (E.words(line).length < 4 && line.length < 55) return false;
+          var key = E.normalize(line);
+          if (summarySentenceSeen.has(key)) return false;
+          summarySentenceSeen.add(key);
+          return true;
         });
-        pool.sort(function (a, b) {
-          return E.words(b).length - E.words(a).length || b.length - a.length;
-        });
+        // Preserve the page's narrative order; longest-first favored generic
+        // boilerplate and headings over the distinct idea stated first.
         return {ref: ref, pageIndex: pageIndex, sentences: pool.slice(0, 8)};
       }).filter(function (pool) { return pool.sentences.length; });
       var pageCount = Math.min(pagePools.length, limit), chosenPools = [];
@@ -581,7 +585,7 @@
       return {
         text: strict && !docs.length
           ? 'أضف مرجعًا أولًا؛ وضع المصادر فقط لا يجيب من خارجها.'
-          : 'لم أتمكن من استرجاع دليل واضح لهذا السؤال من النص المستخرج. هذا لا يثبت أن المعلومة غير موجودة في الملف؛ قد تكون الصياغة مختلفة أو في صفحة لم تُقرأ جيدًا. افتح نص الصفحات ذات الصلة وتحقق من الاستخراج أو صحح النص ثم أعد السؤال.',
+          : 'لم أجد معلومات كافية قابلة للتوثيق في النص المستخرج. هذا لا يثبت أن المعلومة غير موجودة في الملف؛ قد تكون الصياغة مختلفة أو في صفحة لم تُقرأ جيدًا. افتح نص الصفحات ذات الصلة وتحقق من الاستخراج أو صحح النص ثم أعد السؤال.',
         origin: 'miss',
         references: []
       };
