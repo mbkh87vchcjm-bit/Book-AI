@@ -154,11 +154,12 @@
           var height = Math.max(metrics(previous).height, metrics(item).height);
           var gapThreshold = Math.max(1.25, height * 0.20);
           var hasExplicitSpace = /\s$/.test(previousText) || /^\s/.test(piece);
-          var joinsArabicFragments = /[\u0600-\u06ff]$/.test(previousText) &&
-            /^[\u0600-\u06ff]/.test(piece) &&
-            (Array.from(previousText.trim()).length <= 2 || Array.from(piece.trim()).length <= 2);
+          // Arabic PDF text is frequently split into glyph fragments whose
+          // visual gaps are not reliable word boundaries. Preserve PDF.js spacing
+          // for any Arabic boundary; infer missing spaces geometrically for Latin runs.
+          var hasArabicBoundary = /[\u0600-\u06ff]/.test(previousText + piece);
           if (!hasExplicitSpace &&
-              !joinsArabicFragments &&
+              !hasArabicBoundary &&
               !beginsWithClosingPunctuation(piece) &&
               !endsWithOpeningPunctuation(previousText) &&
               gap !== null && gap > gapThreshold) {
