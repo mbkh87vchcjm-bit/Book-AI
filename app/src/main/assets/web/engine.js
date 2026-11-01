@@ -82,33 +82,113 @@
   }
 
   function extractPdfText(items) {
-    var lines = [], line = [];
+    var lines = [], line = [], previousBaseline = null, previousHeight = 0;
+
+    function metrics(item) {
+      var transform = Array.isArray(item.transform) ? item.transform : null;
+      var x = transform && Number.isFinite(Number(transform[4])) ? Number(transform[4]) : null;
+      var y = transform && Number.isFinite(Number(transform[5])) ? Number(transform[5]) : null;
+      var width = Number.isFinite(Number(item.width)) ? Math.abs(Number(item.width)) : 0;
+      var height = Number.isFinite(Number(item.height)) ? Math.abs(Number(item.height)) : 0;
+      if (!height && transform) height = Math.hypot(Number(transform[2]) || 0, Number(transform[3]) || 0);
+      return {x: x, y: y, width: width, height: height, dir: item.dir === 'rtl' ? 'rtl' : 'ltr'};
+    }
+
+    function bounds(item) {
+      var m = metrics(item);
+      if (m.x === null || !m.width) return null;
+      // PDF.js positions RTL runs from their right edge and LTR runs from their left edge.
+      return m.dir === 'rtl'
+        ? {left: m.x - m.width, right: m.x}
+        : {left: m.x, right: m.x + m.width};
+    }
+
+    function horizontalGap(previous, current) {
+      var a = bounds(previous), b = bounds(current);
+      if (!a || !b) return null;
+      var direction = previous.dir === current.dir ? previous.dir : current.dir;
+      return direction === 'rtl' ? a.left - b.right : b.left - a.right;
+    }
+
+    function beginsWithClosingPunctuation(value) {
+      return /^[,.;:!?،؛؟)\]}»…%]/.test(value);
+    }
+
+    function endsWithOpeningPunctuation(value) {
+      return /[(\[{«]$/.test(value);
+    }
+
     function flush() {
       if (!line.length) return;
-      var visible = line.filter(function (item) { return item && item.str; });
-      var rtl = visible.filter(function (item) { return item.dir === 'rtl' && /[\u0600-\u06ff\ufb50-\ufdff\ufe70-\ufeff]/.test(item.str); });
+      var visible = line.filter(function (item) { return item && typeof item.str === 'string' && item.str.length; });
+      if (!visible.length) { line = []; previousBaseline = null; previousHeight = 0; return; }
+
+      // A common Arabic PDF failure is logical text emitted as many tiny glyphs
+      // in visual left-to-right order. Reverse only when the geometry strongly
+      // indicates that specific fragmented pattern; never reverse normal RTL runs.
+      var rtl = visible.filter(function (item) {
+        return item.dir === 'rtl' && /[\u0600-\u06ff\ufb50-\ufdff\ufe70-\ufeff]/.test(item.str);
+      });
       var shortRtl = rtl.filter(function (item) { return Array.from(item.str.trim()).length <= 2; });
       var increasing = 0, measured = 0;
       for (var i = 1; i < visible.length; i++) {
-        var prev = visible[i - 1].transform, next = visible[i].transform;
-        if (prev && next && Math.abs(next[4] - prev[4]) > 0.01) { measured++; if (next[4] > prev[4]) increasing++; }
+        var prev = metrics(visible[i - 1]), next = metrics(visible[i]);
+        if (prev.x !== null && next.x !== null && Math.abs(next.x - prev.x) > 0.01) {
+          measured++;
+          if (next.x > prev.x) increasing++;
+        }
       }
-      var fragmentaryVisualRtl = rtl.length >= 4 && shortRtl.length / rtl.length >= 0.65 && measured > 2 && increasing / measured >= 0.8;
-      var ordered = fragmentaryVisualRtl ? visible.slice().reverse() : visible;
-      var text = ordered.map(function (item) { return item.str; }).join('');
+      var fragmentedVisualRtl = rtl.length >= 4 &&
+        shortRtl.length / rtl.length >= 0.65 &&
+        measured > 2 &&
+        increasing / measured >= 0.8;
+      var ordered = fragmentedVisualRtl ? visible.slice().reverse() : visible.slice();
+      var text = '';
+
+      ordered.forEach(function (item, index) {
+        var piece = item.str;
+        if (index > 0) {
+          var previous = ordered[index - 1];
+          var previousText = previous.str;
+          var gap = horizontalGap(previous, item);
+          var height = Math.max(metrics(previous).height, metrics(item).height);
+          var gapThreshold = Math.max(1.25, height * 0.20);
+          var hasExplicitSpace = /\s$/.test(previousText) || /^\s/.test(piece);
+          if (!hasExplicitSpace &&
+              !beginsWithClosingPunctuation(piece) &&
+              !endsWithOpeningPunctuation(previousText) &&
+              gap !== null && gap > gapThreshold) {
+            text += ' ';
+          }
+        }
+        text += piece;
+      });
+
       try { text = text.normalize('NFKC'); } catch (_) {}
       text = text.replace(/[ \t]{2,}/g, ' ').trim();
       if (text) lines.push(text);
       line = [];
+      previousBaseline = null;
+      previousHeight = 0;
     }
+
     (items || []).forEach(function (item) {
-      if (item.str) line.push(item);
+      if (!item) return;
+      if (typeof item.str === 'string' && item.str.length) {
+        var current = metrics(item);
+        if (line.length && current.y !== null && previousBaseline !== null) {
+          var tolerance = Math.max(2, Math.max(current.height, previousHeight) * 0.55);
+          if (Math.abs(current.y - previousBaseline) > tolerance) flush();
+        }
+        line.push(item);
+        if (current.y !== null) previousBaseline = current.y;
+        if (current.height) previousHeight = current.height;
+      }
       if (item.hasEOL) flush();
     });
     flush();
     return lines.join('\n');
   }
-
   function chunksForDocument(doc, size, overlap) {
     size = size || 850;
     overlap = overlap === undefined ? 110 : overlap;
