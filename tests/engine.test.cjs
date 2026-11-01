@@ -44,13 +44,19 @@ test('reconstructs missing spaces between PDF text items from horizontal geometr
   ]), 'Distributed Systems');
 
   assert.equal(E.extractPdfText([
-    {str:'نظام',dir:'rtl',transform:[1,0,0,1,100,100],width:22,height:12},
+    {str:'نظام ',dir:'rtl',transform:[1,0,0,1,100,100],width:22,height:12},
     {str:'التشغيل',dir:'rtl',transform:[1,0,0,1,70,100],width:30,height:12,hasEOL:true},
   ]), 'نظام التشغيل');
+
+  // A large geometric gap alone must not split fragmented Arabic word items.
+  assert.equal(E.extractPdfText([
+    {str:'ال',dir:'rtl',transform:[1,0,0,1,100,100],width:12,height:12},
+    {str:'جاذبية',dir:'rtl',transform:[1,0,0,1,70,100],width:20,height:12,hasEOL:true},
+  ]), 'الجاذبية');
 });
 
 
-test('keeps short Arabic glyph fragments joined despite apparent geometric gaps', () => {
+test('preserves Arabic glyph fragments when geometry resembles a word gap', () => {
   assert.equal(E.extractPdfText([
     {str:'ال',dir:'rtl',transform:[1,0,0,1,100,100],width:12,height:12},
     {str:'جاذبية',dir:'rtl',transform:[1,0,0,1,70,100],width:20,height:12,hasEOL:true},
