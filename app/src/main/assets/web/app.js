@@ -8,7 +8,7 @@
   var MAX_TEXT_CHARS = 3000000;
   var MAX_PAGES = 500;
   var MAX_OCR_PAGES = 15;
-  var defaults = {mode: 'flexible', allowMath: true, maxSentences: 24, answerDepthVersion: 2, ocrEnabled: true};
+  var defaults = {mode: 'flexible', allowMath: true, maxSentences: 36, answerDepthVersion: 3, ocrEnabled: true};
   var state;
   var learningStore = null;
   var processing = false, cancelProcessing = false, savingWarning = false, storageBlocked = false, modalKind = null, toastTimer;
@@ -33,10 +33,10 @@
         })) throw new Error('Invalid saved state');
         var savedDepthVersion = obj.settings && obj.settings.answerDepthVersion;
         obj.settings = Object.assign({}, defaults, obj.settings || {});
-        // Upgrade old 1/3/5 evidence settings once; do not leave existing notebooks terse.
-        if (savedDepthVersion !== 2) {
-          obj.settings.maxSentences = 24;
-          obj.settings.answerDepthVersion = 2;
+        // Upgrade older notebooks to the deeper evidence budget and broad-query fixes.
+        if (savedDepthVersion !== 3) {
+          obj.settings.maxSentences = 36;
+          obj.settings.answerDepthVersion = 3;
         }
         obj.sessions.forEach(function (session) {
           if (!session.semanticModelStatus) session.semanticModelStatus = session.semanticModelData ? 'ready' : 'pending';
@@ -295,14 +295,14 @@
     var content = '<section class="settings-section"><h3>المحرّك المحلي</h3><p>يجمع أدلة من صفحات متعددة وينظمها حسب التعريف والوظيفة والخطوات والأسباب والأمثلة. ويتدرب محليًا على نصوص الدفتر لترتيب بعض المقاطع المتقاربة دلاليًا. هذه شبكة تشابه وليست نموذجًا لغويًا مولدًا.</p><p class="field-help">حالة التعلم الدلالي: ' + (activeSession().semanticModelStatus === 'ready' ? 'مدرّب على هذا الدفتر' : (activeSession().semanticModelStatus === 'insufficient' ? 'المحتوى الحالي غير كافٍ' : 'سيحاول التدريب عند أول سؤال')) + '</p></section>' +
       '<section class="settings-section"><h3>القيود وطريقة الإجابة</h3><div class="setting-row"><div><strong>المصادر فقط</strong><small>يعرض جملًا من المراجع فقط، ولا يحسب من السؤال بصورة مستقلة.</small></div><label class="switch"><input type="checkbox" id="strict-mode" ' + (s.mode === 'strict' ? 'checked' : '') + '><span></span></label></div>' +
       '<div class="setting-row"><div><strong>السماح بالحساب المحلي</strong><small>للعمليات والمعادلات الخطية البسيطة عند إيقاف وضع المصادر فقط.</small></div><label class="switch"><input type="checkbox" id="allow-math" ' + (s.allowMath !== false ? 'checked' : '') + '><span></span></label></div>' +
-      '<label class="field"><span>عمق الإجابة وعدد الأدلة</span><select id="max-sentences"><option value="12">مفصل</option><option value="24">موسع — الافتراضي</option><option value="36">شامل حسب محتوى المرجع</option></select></label></section>' +
+      '<label class="field"><span>عمق الإجابة وعدد المقاطع المرجعية</span><select id="max-sentences"><option value="24">مفصل</option><option value="36">موسع — الافتراضي</option><option value="48">عميق</option><option value="60">شامل حسب محتوى المرجع</option></select></label></section>' +
       '<section class="settings-section"><h3>قراءة الصفحات المصوّرة</h3><div class="setting-row"><div><strong>محاولة قراءة النص المطبوع من الصورة</strong><small>قوالب وقاموس محليان، حتى ١٥ صفحة مصوّرة لكل ملف.</small></div><label class="switch"><input type="checkbox" id="ocr-enabled" ' + (s.ocrEnabled !== false ? 'checked' : '') + '><span></span></label></div><p class="field-help">تجريبية ومحدودة الخطوط؛ قد تخطئ أو لا تتعرف على كلمات. لا تفهم الرسومات أو الخط اليدوي. صحّح النص بمقارنته بصورة الصفحة.</p></section>' +
       '<section class="settings-section"><h3>الخصوصية والتطوير</h3><p>المصادر والمحادثات محلية، ولا يطلب التطبيق صلاحية الإنترنت. البحث والتلخيص اقتباسيان، ولا يتعامل المحرك مع كل أنواع الأسئلة.</p><p style="margin-top:8px;font-size:0.85em;color:var(--text-secondary)">المطور محمد الفقيه</p></section>';
     openModal(modalShell('الإعدادات والتحكم', 'اضبط القيود المناسبة لك.', content, '<button class="button-secondary" id="cancel-settings">إلغاء</button><button class="button-primary" id="save-settings">حفظ الإعدادات</button>'), 'settings');
-    $('max-sentences').value = String(s.maxSentences || 24);
+    $('max-sentences').value = String(s.maxSentences || 36);
     $('cancel-settings').onclick = closeModal;
     $('save-settings').onclick = function () {
-      state.settings = {mode: $('strict-mode').checked ? 'strict' : 'flexible', allowMath: $('allow-math').checked, maxSentences: Number($('max-sentences').value), answerDepthVersion: 2, ocrEnabled: $('ocr-enabled').checked};
+      state.settings = {mode: $('strict-mode').checked ? 'strict' : 'flexible', allowMath: $('allow-math').checked, maxSentences: Number($('max-sentences').value), answerDepthVersion: 3, ocrEnabled: $('ocr-enabled').checked};
       saveState(); closeModal(); renderAll(); toast('تم حفظ الإعدادات.');
     };
   }
@@ -316,8 +316,18 @@
       var text = $('paste-content').value.trim(), name = $('paste-name').value.trim() || 'نص مضاف';
       if (!text) { toast('الصق النص أولًا.'); return; }
       if (text.length > MAX_TEXT_CHARS) { toast('النص كبير جدًا. الحد الأقصى ثلاثة ملايين حرف.'); return; }
-      activeSession().documents.push({id: uid(), name: name, type: 'text', pages: [{page: 1, text: text}], totalPages: 1});
-      if (!saveState()) { activeSession().documents.pop(); return; }
+      var pasteSession = activeSession();
+      var oldModelData = pasteSession.semanticModelData || null;
+      var oldModelStatus = pasteSession.semanticModelStatus || 'pending';
+      pasteSession.documents.push({id: uid(), name: name, type: 'text', pages: [{page: 1, text: text}], totalPages: 1});
+      pasteSession.semanticModelData = null;
+      pasteSession.semanticModelStatus = 'pending';
+      if (!saveState()) {
+        pasteSession.documents.pop();
+        pasteSession.semanticModelData = oldModelData;
+        pasteSession.semanticModelStatus = oldModelStatus;
+        return;
+      }
       closeModal(); renderAll(); toast('أُضيف النص إلى مصادرك.');
     };
   }
@@ -424,6 +434,11 @@
     if (limited) warnings.push('توقف القارئ بعد ٣٥٠ كلمة في ' + fmt(limited) + ' صفحة.');
     if (skipped) warnings.push('لم تُقرأ ' + fmt(skipped) + ' صفحة مصوّرة بسبب حد ١٥ صفحة لكل ملف.');
     if (totalPages > MAX_PAGES || truncated) warnings.push('استُخرجت أول ' + fmt(pages.length) + ' صفحة فقط بسبب حد الحجم.');
+    var sparsePages = pages.filter(function (page) { return String(page.text || '').trim().length < 100; }).length;
+    if (pages.length >= 3 && sparsePages / pages.length >= 0.20) {
+      warnings.push('تنبيه جودة الاستخراج: ' + fmt(sparsePages) + ' صفحة من ' + fmt(pages.length) +
+        ' تحتوي نصًا قليلًا جدًا. قد يكون الملف مصورًا أو ترتيب النص غير سليم؛ افتح الصفحات وتحقق من النص قبل الاعتماد على الإجابات.');
+    }
     return {doc: {id: uid(), name: file.name, type: 'pdf', pages: pages, totalPages: totalPages}, warning: warnings.join(' ')};
   }
   async function importFiles(fileList) {

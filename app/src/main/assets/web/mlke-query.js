@@ -46,7 +46,7 @@
     if (/(?:ترجم|ترجمة|translate)/.test(norm) || /^translate/.test(enNorm)) {
       return 'translation';
     }
-    if (/(?:لخص|تلخيص|ملخص|summarize|overview)/.test(norm) || /(?:summarize|overview)/.test(enNorm)) {
+    if (/(?:لخص|تلخيص|ملخص|اهم النقاط|اهم الافكار|الافكار الرئيسيه|المواضيع|الموضوعات|كامل المحتوى|نظره عامه|summarize|overview|main ideas|all topics|whole document)/.test(norm) || /(?:summarize|overview|main ideas|all topics|whole document)/.test(enNorm)) {
       return 'summarization';
     }
     if (/(?:لماذا|سبب|علل|why)/.test(norm) || /^why/.test(enNorm)) {
