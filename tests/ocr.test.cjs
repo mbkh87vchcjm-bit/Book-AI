@@ -10,6 +10,25 @@ const words = JSON.parse(fs.readFileSync(path.join(web, 'ocr/vocabulary.json'), 
 const buffer = fs.readFileSync(path.join(web, 'ocr/templates.bin'));
 const exactBuffer = buffer.buffer.slice(buffer.byteOffset, buffer.byteOffset + buffer.byteLength);
 
+
+function makeTinyScoreTable(entries, vocabulary) {
+  const record = 70, buffer = new ArrayBuffer(16 + entries.length * record);
+  const bytes = new Uint8Array(buffer), view = new DataView(buffer);
+  'MIDADOC1'.split('').forEach((ch,i)=>{ bytes[i]=ch.charCodeAt(0); });
+  view.setUint32(8, entries.length, true);
+  view.setUint16(12, record, true);
+  bytes[14] = 32; bytes[15] = 16;
+  const buckets = Array.from({length:96},()=>[]);
+  entries.forEach((entry,index)=>{
+    const offset=16+index*record;
+    view.setUint32(offset,entry.id,true);
+    view.setUint16(offset+4,512,true); // aspect ratio = 1
+    bytes.set(entry.bits,offset+6);
+    buckets[40].push(offset);
+  });
+  return {bytes,view,buckets,vocabulary};
+}
+
 test('OCR template table is complete, bounded and points to the local dictionary', () => {
   const table = OCR.decodeTable(exactBuffer, words);
   assert.equal(table.view.getUint32(8, true), 200000);
@@ -87,4 +106,29 @@ test('layout splits a large inter-word gap while joining narrow glyph gaps', () 
   const lines = OCR.layout(mask, width, height);
   assert.equal(lines.length, 1);
   assert.equal(lines[0].length, 2);
+});
+
+test('OCR marks close competing dictionary matches as uncertain', () => {
+  const exact = new Uint8Array(64);
+  const near = new Uint8Array(64); near[0] = 1;
+  const table = makeTinyScoreTable([
+    {id:0,bits:exact},{id:1,bits:near}
+  ], {arabic:[],english:['router','routed']});
+  const result = OCR.scoreFeature(table,new Uint8Array(64),1);
+  assert.equal(result.uncertain,true);
+  assert.equal(result.text,'□');
+  assert.ok(result.margin < 0.006);
+});
+
+test('OCR accepts a clear template match when the runner-up is sufficiently distant', () => {
+  const exact = new Uint8Array(64);
+  const distant = new Uint8Array(64);
+  for(let i=0;i<20;i++) distant[i]=255;
+  const table = makeTinyScoreTable([
+    {id:0,bits:exact},{id:1,bits:distant}
+  ], {arabic:[],english:['router','database']});
+  const result = OCR.scoreFeature(table,new Uint8Array(64),1);
+  assert.equal(result.uncertain,false);
+  assert.equal(result.text,'router');
+  assert.ok(result.margin >= 0.006);
 });
