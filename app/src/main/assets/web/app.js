@@ -292,7 +292,7 @@
   function openSettings() {
     if (processing) { toast('انتظر انتهاء قراءة المصدر أولًا.'); return; }
     var s = state.settings;
-    var content = '<section class="settings-section"><h3>المحرّك المحلي</h3><p>يجمع أدلة من صفحات متعددة وينظمها حسب التعريف والوظيفة والخطوات والأسباب والأمثلة. ويتدرب محليًا على نصوص الدفتر لترتيب بعض المقاطع المتقاربة دلاليًا. هذه شبكة تشابه وليست نموذجًا لغويًا مولدًا.</p><p class="field-help">حالة التعلم الدلالي: ' + (activeSession().semanticModelStatus === 'ready' ? 'مدرّب على هذا الدفتر' : (activeSession().semanticModelStatus === 'insufficient' ? 'المحتوى الحالي غير كافٍ' : 'سيحاول التدريب عند أول سؤال')) + '</p></section>' +
+    var content = '<section class="settings-section"><h3>المحرّك المحلي</h3><p>يجمع أدلة من صفحات متعددة وينظمها حسب التعريف والوظيفة والخطوات والأسباب والأمثلة. ويتدرب محليًا على نصوص الدفتر بعد فصل الجمل عن بعضها، ثم يستخدم تمثيلًا موزونًا للكلمات لتقليل أثر الكلمات الشائعة. هذه شبكة تشابه لترتيب المقاطع وليست نموذجًا لغويًا مولدًا.</p><p class="field-help">حالة التعلم الدلالي: ' + (activeSession().semanticModelStatus === 'ready' ? 'مدرّب على هذا الدفتر' : (activeSession().semanticModelStatus === 'insufficient' ? 'المحتوى الحالي غير كافٍ' : 'سيحاول التدريب عند أول سؤال')) + '</p></section>' +
       '<section class="settings-section"><h3>القيود وطريقة الإجابة</h3><div class="setting-row"><div><strong>المصادر فقط</strong><small>يعرض جملًا من المراجع فقط، ولا يحسب من السؤال بصورة مستقلة.</small></div><label class="switch"><input type="checkbox" id="strict-mode" ' + (s.mode === 'strict' ? 'checked' : '') + '><span></span></label></div>' +
       '<div class="setting-row"><div><strong>السماح بالحساب المحلي</strong><small>للعمليات والمعادلات الخطية البسيطة عند إيقاف وضع المصادر فقط.</small></div><label class="switch"><input type="checkbox" id="allow-math" ' + (s.allowMath !== false ? 'checked' : '') + '><span></span></label></div>' +
       '<label class="field"><span>عمق الإجابة وعدد المقاطع المرجعية</span><select id="max-sentences"><option value="24">مفصل</option><option value="36">موسع — الافتراضي</option><option value="48">عميق</option><option value="60">شامل حسب محتوى المرجع</option></select></label></section>' +
@@ -499,7 +499,7 @@
         toast('يجري تدريب أداة تشابه محلية صغيرة على نصوص هذا الدفتر.');
         try {
           var trainedModel = await Neural.train(session.documents, {
-            dimension: 24, window: 2, negatives: 2, epochs: 1,
+            dimension: 24, window: 2, negatives: 2, epochs: 1, maxSequenceTokens: 64,
             maxVocabulary: 1600, maxTokens: 24000, minCount: 2, maxChars: 360000
           });
           if (trainedModel) {
