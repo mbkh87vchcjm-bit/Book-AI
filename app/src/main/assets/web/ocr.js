@@ -83,10 +83,10 @@
     // Similar but different words are intentionally not presented as certain.
     // A low distance still does not guarantee correctness, especially for words
     // absent from the dictionary. Prefer a visible unknown over a weak match.
-    if (bestId < 0 || best > 0.075 || (next - best < 0.006 && best > 0.015)) return {text: '□', rtl: false, uncertain: true, score: best};
+    if (bestId < 0 || best > 0.075 || (next - best < 0.006 && best > 0.015)) return {text: '□', rtl: null, uncertain: true, score: best};
     var result = wordFor(table, bestId);
     result.uncertain = !result.text; result.score = best;
-    if (!result.text) result.text = '□';
+    if (!result.text) { result.text = '□'; result.rtl = null; }
     return result;
   }
   function gray(r, g, b) { return (77 * r + 150 * g + 29 * b) >> 8; }
@@ -118,6 +118,66 @@
     }
     return found;
   }
+  // Estimate the word boundary from the distribution of horizontal gaps.
+  // A clear large-gap cluster is preferred; otherwise retain the conservative
+  // line-height-based fallback used by the original template OCR.
+  function estimateWordGap(colRuns, lineHeight) {
+    var gaps = [];
+    for (var i = 1; i < (colRuns || []).length; i++) {
+      var gap = colRuns[i].start - colRuns[i - 1].end - 1;
+      if (gap > 0) gaps.push(gap);
+    }
+    gaps.sort(function (a, b) { return a - b; });
+    var bestRatio = 1.75, bestThreshold = null;
+    for (var j = 1; j < gaps.length; j++) {
+      var lower = gaps[j - 1], upper = gaps[j];
+      var ratio = upper / Math.max(1, lower);
+      if (upper >= Math.max(3, lineHeight * 0.12) && ratio > bestRatio && upper - lower >= 2) {
+        bestRatio = ratio;
+        bestThreshold = Math.round((lower + upper) / 2);
+      }
+    }
+    if (bestThreshold !== null) return Math.max(2, Math.min(24, bestThreshold));
+    return Math.max(3, Math.min(18, Math.round(lineHeight * 0.18)));
+  }
+
+  // PDF/scan columns are returned by the projection profile from left to right.
+  // Rebuild logical reading order using directional runs, rather than reversing
+  // an entire mixed Arabic/Latin line when Arabic happens to be the majority.
+  function logicalWordOrder(words) {
+    var input = (words || []).slice();
+    var arabic = input.filter(function (word) { return word.rtl === true && !word.uncertain; }).length;
+    var latin = input.filter(function (word) { return word.rtl === false && !word.uncertain; }).length;
+    var baseRtl = arabic > latin;
+
+    var resolved = input.map(function (word, index) {
+      if (word.rtl === true || word.rtl === false) return word.rtl;
+      for (var left = index - 1; left >= 0; left--) {
+        if (input[left].rtl === true || input[left].rtl === false) return input[left].rtl;
+      }
+      for (var right = index + 1; right < input.length; right++) {
+        if (input[right].rtl === true || input[right].rtl === false) return input[right].rtl;
+      }
+      return baseRtl;
+    });
+
+    var runs = [];
+    input.forEach(function (word, index) {
+      var direction = resolved[index] ? 'rtl' : 'ltr';
+      var last = runs[runs.length - 1];
+      if (!last || last.direction !== direction) runs.push({direction: direction, words: [word]});
+      else last.words.push(word);
+    });
+
+    if (baseRtl) runs.reverse();
+    var output = [];
+    runs.forEach(function (run) {
+      var sequence = run.direction === 'rtl' ? run.words.slice().reverse() : run.words;
+      output = output.concat(sequence);
+    });
+    return output;
+  }
+
   function layout(mask, width, height) {
     var rows = new Uint32Array(height);
     for (var y = 0; y < height; y++) for (var x = 0; x < width; x++) rows[y] += mask[y * width + x];
@@ -138,7 +198,7 @@
       for (var y = line.start; y <= line.end; y++) for (var x = 0; x < width; x++) cols[x] += mask[y * width + x];
       var colRuns = runs(cols, 1);
       if (!colRuns.length) return [];
-      var wordGap = Math.max(3, Math.round(lineHeight * 0.18));
+      var wordGap = estimateWordGap(colRuns, lineHeight);
       var segments = [];
       colRuns.forEach(function (r) {
         var last = segments[segments.length - 1];
@@ -168,9 +228,7 @@
         words.push(result);
       }
       if (words.length) {
-        var arabic = words.filter(function (w) { return w.rtl; }).length;
-        var latin = words.filter(function (w) { return !w.rtl && !w.uncertain; }).length;
-        if (arabic > latin) words.reverse();
+        words = logicalWordOrder(words);
         output.push(words.map(function (w) { return w.text; }).join(' '));
       }
       if (options.onProgress) options.onProgress(li + 1, lines.length);
@@ -178,8 +236,12 @@
       if (li % 2 === 1) await new Promise(function (resolve) { setTimeout(resolve, 0); });
       if (used > MAX_WORDS_PER_PAGE) break;
     }
+    var totalWords = recognized + uncertain;
     return {text: output.join('\n'), recognized: recognized, uncertain: uncertain,
+      totalWords: totalWords, recognitionRate: totalWords ? recognized / totalWords : 0,
       truncated: used > MAX_WORDS_PER_PAGE, lines: lines.length};
   }
-  return {recognize: recognize, load: load, decodeTable: decodeTable, binarize: binarize, layout: layout, scoreFeature: scoreFeature, feature: feature};
+  return {recognize: recognize, load: load, decodeTable: decodeTable, binarize: binarize,
+    layout: layout, estimateWordGap: estimateWordGap, logicalWordOrder: logicalWordOrder,
+    scoreFeature: scoreFeature, feature: feature};
 }));
