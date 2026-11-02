@@ -35,3 +35,56 @@ test('a blank page yields no OCR lines rather than fabricated text', () => {
   assert.equal(mask.reduce((n, v) => n + v, 0), 0);
   assert.deepEqual(OCR.layout(mask, width, height), []);
 });
+
+test('adaptive word-gap estimation separates a clear word gap from glyph gaps', () => {
+  const gaps = [
+    {start:0,end:2},
+    {start:4,end:6},
+    {start:9,end:11},
+    {start:15,end:17},
+    {start:39,end:41}
+  ];
+  const threshold = OCR.estimateWordGap(gaps, 12);
+  assert.ok(threshold > 3 && threshold < 24);
+  assert.ok(2 < threshold);
+  assert.ok(23 >= threshold);
+});
+
+test('logical reading order preserves Arabic runs and embedded Latin runs', () => {
+  const visual = [
+    {text:'الأجهزة',rtl:true},
+    {text:'تربط',rtl:true},
+    {text:'TCP',rtl:false},
+    {text:'الشبكة',rtl:true}
+  ];
+  assert.deepEqual(OCR.logicalWordOrder(visual).map(x=>x.text),
+    ['الشبكة','TCP','تربط','الأجهزة']);
+});
+
+test('logical reading order keeps English left-to-right and reverses pure Arabic visual order', () => {
+  assert.deepEqual(OCR.logicalWordOrder([
+    {text:'Offline',rtl:false},{text:'Assistant',rtl:false}
+  ]).map(x=>x.text), ['Offline','Assistant']);
+  assert.deepEqual(OCR.logicalWordOrder([
+    {text:'الأجهزة',rtl:true},{text:'ربط',rtl:true},{text:'الشبكة',rtl:true}
+  ]).map(x=>x.text), ['الشبكة','ربط','الأجهزة']);
+});
+
+test('unknown OCR tokens remain in the surrounding directional run', () => {
+  const ordered = OCR.logicalWordOrder([
+    {text:'الأجهزة',rtl:true},{text:'□',rtl:null,uncertain:true},{text:'الشبكة',rtl:true}
+  ]);
+  assert.deepEqual(ordered.map(x=>x.text), ['الشبكة','□','الأجهزة']);
+});
+
+test('layout splits a large inter-word gap while joining narrow glyph gaps', () => {
+  const width = 100, height = 30, mask = new Uint8Array(width * height);
+  for (let y = 10; y < 20; y++) {
+    [[10,13],[16,19],[22,25],[52,55]].forEach(function (range) {
+      for (let x = range[0]; x <= range[1]; x++) mask[y * width + x] = 1;
+    });
+  }
+  const lines = OCR.layout(mask, width, height);
+  assert.equal(lines.length, 1);
+  assert.equal(lines[0].length, 2);
+});
