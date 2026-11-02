@@ -243,12 +243,17 @@
           segments.push({start: cursor, end: end, kind: unit.kind});
           if (end >= unit.end) break;
           var next = Math.max(cursor + 1, end - overlap);
-          var space = source.indexOf(' ', next);
-          var newline = source.indexOf('\n', next);
-          var candidatesNext = [space, newline].filter(function (v) { return v > -1 && v < end; });
-          // Choose the first safe boundary after the desired overlap start.
-          // Choosing the last one near "end" collapses overlap and loses context.
-          cursor = candidatesNext.length ? Math.min.apply(Math, candidatesNext) + 1 : next;
+          // Keep the exact overlap start when it is already a word boundary.
+          // Only advance when it would split a token in half.
+          var previousChar = next > 0 ? source.charAt(next - 1) : '';
+          if (/\s/.test(previousChar)) {
+            cursor = next;
+          } else {
+            var space = source.indexOf(' ', next);
+            var newline = source.indexOf('\n', next);
+            var candidatesNext = [space, newline].filter(function (v) { return v > -1 && v < end; });
+            cursor = candidatesNext.length ? Math.min.apply(Math, candidatesNext) + 1 : next;
+          }
         }
       });
 
