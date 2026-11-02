@@ -169,7 +169,7 @@
         for (var i = 0; i < vectors.length; i++) {
           packed[i] = Math.max(-127, Math.min(127, Math.round(vectors[i] * 127)));
         }
-        var packedWeights = weights.map(function (weight) {
+        var packedWeights = Array.from(weights, function (weight) {
           return Math.max(500, Math.min(3000, Math.round(weight * 1000)));
         });
         return {
