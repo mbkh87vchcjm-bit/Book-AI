@@ -80,12 +80,14 @@
         else if (score < next) next = score;
       }
     }
-    // Similar but different words are intentionally not presented as certain.
-    // A low distance still does not guarantee correctness, especially for words
-    // absent from the dictionary. Prefer a visible unknown over a weak match.
-    if (bestId < 0 || best > 0.075 || (next - best < 0.006 && best > 0.015)) return {text: '□', rtl: null, uncertain: true, score: best};
+    // Similar competing dictionary words are not presented as certain even
+    // when the best bitmap distance is low. A narrow top-two margin is ambiguous.
+    var margin = next < 999 ? Math.max(0, next - best) : 1;
+    if (bestId < 0 || best > 0.075 || (next < 999 && margin < 0.006)) {
+      return {text: '□', rtl: null, uncertain: true, score: best, margin: margin};
+    }
     var result = wordFor(table, bestId);
-    result.uncertain = !result.text; result.score = best;
+    result.uncertain = !result.text; result.score = best; result.margin = margin;
     if (!result.text) { result.text = '□'; result.rtl = null; }
     return result;
   }
