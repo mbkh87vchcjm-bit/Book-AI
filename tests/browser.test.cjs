@@ -121,6 +121,16 @@ async function createScannedPdf(page) {
       await page.waitForSelector('.reference-card');
       const answer = await page.locator('.message.assistant').innerText();
       assert.match(answer, /Osmosis/); assert.match(answer, /صفحة (2|٢)/);
+      assert.equal(await page.locator('[data-feedback]').count(), 2);
+      await page.locator('[data-feedback="positive"]').click();
+      assert.equal(await page.locator('[data-feedback="positive"]').getAttribute('aria-pressed'), 'true');
+      await page.reload();
+      assert.equal(await page.locator('[data-feedback="positive"]').getAttribute('aria-pressed'), 'true');
+      await page.locator('[data-feedback="negative"]').click();
+      assert.equal(await page.locator('[data-feedback="positive"]').getAttribute('aria-pressed'), 'false');
+      assert.equal(await page.locator('[data-feedback="negative"]').getAttribute('aria-pressed'), 'true');
+      await page.reload();
+      assert.equal(await page.locator('[data-feedback="negative"]').getAttribute('aria-pressed'), 'true');
       await page.locator('.reference-card').click();
       assert.match(await page.locator('.modal').innerText(), /semipermeable/);
       await page.locator('#open-full-page').click();
