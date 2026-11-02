@@ -11,7 +11,7 @@ test('ranking metrics compute recall, precision, reciprocal rank and nDCG', () =
   assert.equal(result.recallAtK, 1);
   assert.equal(result.precisionAtK, 2 / 3);
   assert.equal(result.reciprocalRankAtK, 0.5);
-  assert.ok(result.ndcgAtK > 0.79 && result.ndcgAtK < 0.81);
+  assert.ok(result.ndcgAtK > 0.69 && result.ndcgAtK < 0.70);
 });
 
 test('ranking metrics handle no relevant hit without fabricating a score', () => {
