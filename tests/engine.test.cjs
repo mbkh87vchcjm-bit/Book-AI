@@ -218,6 +218,10 @@ test('structure-aware chunking splits long paragraphs with overlapping source of
   assert.ok(chunks.length > 1);
   assert.ok(chunks.every(c => source.slice(c.offset,c.endOffset) === c.text));
   assert.ok(chunks[1].offset < chunks[0].endOffset);
+  // A requested 15-character overlap should retain most of that context,
+  // allowing a small shift to the next word boundary.
+  assert.ok(chunks[0].endOffset - chunks[1].offset >= 10,
+    'adjacent chunks should retain at least 10 characters of the requested 15-character overlap');
 });
 
 test('structure-aware chunking returns no chunks for empty pages', () => {
