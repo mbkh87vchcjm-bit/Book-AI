@@ -69,6 +69,14 @@ test('adaptive word-gap estimation separates a clear word gap from glyph gaps', 
   assert.ok(23 >= threshold);
 });
 
+test('adaptive word-gap estimation never weakens the conservative Arabic glyph threshold', () => {
+  const runs = [
+    {start:0,end:2},{start:4,end:6},{start:9,end:11},
+    {start:15,end:17},{start:24,end:26}
+  ];
+  assert.ok(OCR.estimateWordGap(runs,50) >= 9);
+});
+
 test('logical reading order preserves Arabic runs and embedded Latin runs', () => {
   const visual = [
     {text:'الأجهزة',rtl:true},
