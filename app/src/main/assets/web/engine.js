@@ -494,7 +494,7 @@
         return Math.max(0, Math.min(1, Number(semanticModel.similarity(query, chunk.text)) || 0));
       } catch (_) { return 0; }
     });
-    // v2 sentence-aware, coverage-calibrated embeddings use a lower validated admission threshold.
+    // Operating threshold for v2 sentence-aware, coverage-calibrated semantic embeddings.
     var semantic = semanticScores.map(function (score, index) { return {index: index, score: score}; })
       .filter(function (item) { return item.score >= 0.74; })
       .sort(function (a, b) { return b.score - a.score || a.index - b.index; })
