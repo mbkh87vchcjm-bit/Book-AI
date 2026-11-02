@@ -139,8 +139,11 @@
         bestThreshold = Math.round((lower + upper) / 2);
       }
     }
-    if (bestThreshold !== null) return Math.max(2, Math.min(24, bestThreshold));
-    return Math.max(3, Math.min(18, Math.round(lineHeight * 0.18)));
+    var conservative = Math.max(3, Math.min(18, Math.round(lineHeight * 0.18)));
+    // Adapt only upward. Lowering the established guard split glyphs inside
+    // some Arabic fonts (notably DejaVu at 48px) and inflated word counts.
+    if (bestThreshold !== null) return Math.max(conservative, Math.min(24, bestThreshold));
+    return conservative;
   }
 
   // PDF/scan columns are returned by the projection profile from left to right.
