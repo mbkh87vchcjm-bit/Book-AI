@@ -246,7 +246,9 @@
           var space = source.indexOf(' ', next);
           var newline = source.indexOf('\n', next);
           var candidatesNext = [space, newline].filter(function (v) { return v > -1 && v < end; });
-          cursor = candidatesNext.length ? Math.max.apply(Math, candidatesNext) + 1 : next;
+          // Choose the first safe boundary after the desired overlap start.
+          // Choosing the last one near "end" collapses overlap and loses context.
+          cursor = candidatesNext.length ? Math.min.apply(Math, candidatesNext) + 1 : next;
         }
       });
 
