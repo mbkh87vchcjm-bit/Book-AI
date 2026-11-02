@@ -265,3 +265,16 @@ test('MMR lambda zero favors lexical novelty after the first result', () => {
   assert.equal(selected.length,2);
   assert.equal(selected[1].order,2);
 });
+
+
+test('semantic retrieval admission uses the v2 confidence threshold', () => {
+  const docs = [{id:'semantic-only',name:'Semantic.pdf',type:'pdf',pages:[
+    {page:4,text:'A passage about an unfamiliar but relevant technical concept.'}
+  ]}];
+  const admitted = E.search(docs, 'quasar', 5, '', null, {similarity: () => 0.75});
+  assert.equal(admitted.retrievalStats.semantic, 1);
+  assert.equal(admitted.references[0].page, 4);
+  const rejected = E.search(docs, 'quasar', 5, '', null, {similarity: () => 0.73});
+  assert.equal(rejected.retrievalStats.semantic, 0);
+  assert.deepEqual(rejected.references, []);
+});
