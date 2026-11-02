@@ -268,6 +268,7 @@ test('MMR lambda zero favors lexical novelty after the first result', () => {
 
 
 test('semantic retrieval admission uses the v2 confidence threshold', () => {
+  assert.equal(E.semanticMinScore, 0.74);
   const docs = [{id:'semantic-only',name:'Semantic.pdf',type:'pdf',pages:[
     {page:4,text:'A passage about an unfamiliar but relevant technical concept.'}
   ]}];
