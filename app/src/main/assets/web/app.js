@@ -363,7 +363,7 @@
     }
     var totalPages = pdfDoc.numPages;
     var pages = [], count = Math.min(totalPages, MAX_PAGES), totalChars = 0;
-    var empty = 0, truncated = false, ocrCount = 0, skipped = 0, ocrFailed = 0, uncertain = 0, limited = 0;
+    var empty = 0, truncated = false, ocrCount = 0, skipped = 0, ocrFailed = 0, uncertain = 0, recognized = 0, lowRecognitionPages = 0, limited = 0;
     try {
       for (var i = 1; i <= count; i++) {
         if (cancelProcessing) throw new Error('أُوقفت القراءة؛ لم يُحفظ الملف الحالي.');
@@ -412,7 +412,17 @@
               });
               if (cancelProcessing) throw new Error('أُوقفت القراءة؛ لم يُحفظ الملف الحالي.');
               if (found.text) pageData.text = (pageText ? pageText + '\n' : '') + found.text;
-              uncertain += found.uncertain; if (found.truncated) limited++;
+              recognized += found.recognized;
+              uncertain += found.uncertain;
+              pageData.ocrStats = {
+                recognized: found.recognized,
+                uncertain: found.uncertain,
+                total: found.totalWords,
+                recognitionRate: found.recognitionRate
+              };
+              // This is dictionary acceptance coverage, not a calibrated accuracy probability.
+              if (found.totalWords >= 5 && found.recognitionRate < 0.55) lowRecognitionPages++;
+              if (found.truncated) limited++;
             } catch (err) {
               if (cancelProcessing) throw err;
               ocrFailed++;
@@ -429,6 +439,7 @@
     var warnings = [];
     if (ocrCount) warnings.push('حاولت قراءة ' + fmt(ocrCount) + ' صفحة مصوّرة. النتائج تجريبية وقد تحتوي أخطاء حتى في الكلمات الظاهرة؛ افتح المصدر وقارن الصورة وصحح النص.');
     if (uncertain) warnings.push('الرمز □ يمثل كلمات لم تُعرف بثقة (' + fmt(uncertain) + ').');
+    if (lowRecognitionPages) warnings.push('نسبة الكلمات التي طابقها قاموس OCR أقل من ٥٥٪ في ' + fmt(lowRecognitionPages) + ' صفحة؛ اعتبر نص هذه الصفحات مسودة تحتاج مراجعة، ولا تعتمد عليه وحده.');
     if (empty) warnings.push(fmt(empty) + ' صفحة بلا نص معروف؛ يمكنك تصحيح النص يدويًا.');
     if (ocrFailed) warnings.push('تعذّرت القراءة الآلية في ' + fmt(ocrFailed) + ' صفحة؛ ما زالت صورة الصفحة متاحة للتصحيح.');
     if (limited) warnings.push('توقف القارئ بعد ٣٥٠ كلمة في ' + fmt(limited) + ' صفحة.');
