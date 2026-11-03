@@ -14,8 +14,16 @@ test('WebView app UI is served from the reserved HTTPS asset origin', () => {
   assert.match(activity, /appassets\.androidplatform\.net/);
   assert.match(activity, /\/assets\/web\//);
   assert.match(activity, /web\.loadUrl\(ASSET_URL \+ "index\.html"\)/);
-  assert.match(activity, /getAssets\(\)\.open\(relative\)/);
+  assert.match(activity, /getAssets\(\)\.open\("web\/" \+ relative\)/);
   assert.match(activity, /shouldInterceptRequest\(WebView view, WebResourceRequest request\)/);
+});
+
+test('WebView URL mapping matches the APK web asset directory', () => {
+  const webAssets = path.join(root, 'app/src/main/assets/web');
+  assert.ok(fs.existsSync(path.join(webAssets, 'index.html')), 'entry page must be bundled under assets/web');
+  assert.ok(fs.existsSync(path.join(webAssets, 'app.js')), 'main application script must be bundled under assets/web');
+  assert.match(activity, /getAssets\(\)\.open\("web\/" \+ relative\)/);
+  assert.doesNotMatch(activity, /getAssets\(\)\.open\(relative\)/);
 });
 
 test('WebView denies filesystem access and disables file-origin privileges', () => {
