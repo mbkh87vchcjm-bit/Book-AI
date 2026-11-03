@@ -37,6 +37,10 @@ jobs:
         run: |
           npm test
 
+      - name: Run retrieval quality benchmark
+        run: |
+          npm run benchmark:retrieval
+
       - name: Run browser integration tests
         run: |
           npm run test:browser
