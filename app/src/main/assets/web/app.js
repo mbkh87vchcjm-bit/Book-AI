@@ -161,7 +161,15 @@
     $('messages').innerHTML = session.messages.map(function (m) {
       var user = m.role === 'user';
       var body = m.text ? messageText(m.text) : '';
-      return '<article class="message ' + (user ? 'user' : 'assistant') + '" data-message-id="' + esc(m.id) + '"><div class="' + (user ? 'user-avatar' : 'assistant-avatar') + '">' + (user ? 'أنت' : icon('spark')) + '</div><div class="message-body"><div class="message-meta"><strong>' + (user ? 'أنت' : 'مداد') + '</strong>' + '</div><div class="message-text" dir="auto">' + body + '</div>' + (!user ? originMarkup(m) + refMarkup(m) + '<div class="message-actions"><button data-copy="' + esc(m.id) + '">' + icon('copy') + ' نسخ</button></div>' : '') + '</div></article>';
+      var experience = !user && m.experienceId && learningStore && learningStore.getExperience
+        ? learningStore.getExperience(m.experienceId) : null;
+      var positiveLabel = experience && experience.userRating === 'positive' ? 'مفيدة ✓' : 'مفيدة';
+      var negativeLabel = experience && experience.userRating === 'negative' ? 'غير مفيدة ✓' : 'غير مفيدة';
+      var feedbackMarkup = experience
+        ? '<button data-feedback="positive" data-message="' + esc(m.id) + '" aria-pressed="' + (experience.userRating === 'positive') + '">' + positiveLabel + '</button>' +
+          '<button data-feedback="negative" data-message="' + esc(m.id) + '" aria-pressed="' + (experience.userRating === 'negative') + '">' + negativeLabel + '</button>'
+        : '';
+      return '<article class="message ' + (user ? 'user' : 'assistant') + '" data-message-id="' + esc(m.id) + '"><div class="' + (user ? 'user-avatar' : 'assistant-avatar') + '">' + (user ? 'أنت' : icon('spark')) + '</div><div class="message-body"><div class="message-meta"><strong>' + (user ? 'أنت' : 'مداد') + '</strong>' + '</div><div class="message-text" dir="auto">' + body + '</div>' + (!user ? originMarkup(m) + refMarkup(m) + '<div class="message-actions"><button data-copy="' + esc(m.id) + '">' + icon('copy') + ' نسخ</button>' + feedbackMarkup + '</div>' : '') + '</div></article>';
     }).join('');
     $('messages').querySelectorAll('[data-reference]').forEach(function (el) { el.onclick = function () { openReference(el.dataset.message, Number(el.dataset.reference)); }; });
     $('messages').querySelectorAll('[data-copy]').forEach(function (el) { el.onclick = function () {
@@ -169,6 +177,24 @@
       if (!msg) return;
       if (Native && Native.copyText) { Native.copyText(msg.text); toast('تم نسخ النص.'); }
       else if (navigator.clipboard) navigator.clipboard.writeText(msg.text).then(function () { toast('تم نسخ النص.'); }).catch(function () { toast('تعذّر النسخ.'); });
+    }; });
+    $('messages').querySelectorAll('[data-feedback]').forEach(function (el) { el.onclick = function () {
+      var msg = session.messages.find(function (m) { return m.id === el.dataset.message; });
+      var experience = msg && learningStore && learningStore.getExperience
+        ? learningStore.getExperience(msg.experienceId) : null;
+      if (!msg || !experience || !learningStore.rateExperience || !E.baseWords) {
+        toast('تعذر العثور على سجل هذه الإجابة.');
+        return;
+      }
+      var result = learningStore.rateExperience(msg.experienceId, el.dataset.feedback, E.baseWords(experience.question));
+      if (!result.changed) {
+        toast(result.reason === 'unchanged' ? 'هذا التقييم مسجل بالفعل.' : 'تعذر تسجيل التقييم.');
+        return;
+      }
+      state.learningData = learningStore.exportData();
+      var saved = saveState();
+      renderMessages();
+      if (saved) toast('حُفظ تقييمك محليًا، وسيؤثر بقدر محدود في ترتيب نتائج البحث اللاحقة.');
     }; });
     $('typing').hidden = !processing;
     if (processing && !cancelProcessing) $('typing-text').textContent = 'أستخرج النص من المصدر';
@@ -530,14 +556,16 @@
         learningStore: learningStore,
         semanticModel: semanticModel
       });
-      session.messages.push({
+      var assistantMessage = {
         id: uid(), role: 'assistant', text: reply.text, origin: reply.origin,
         references: reply.references, intent: reply.intent,
         semanticUsed: !!reply.semanticUsed, evidenceCount: reply.evidenceCount || 0
-      });
+      };
+      session.messages.push(assistantMessage);
       if (learningStore) {
-        learningStore.recordExperience({
-          question: question, answerText: reply.text, references: reply.references
+        assistantMessage.experienceId = learningStore.recordExperience({
+          messageId: assistantMessage.id, question: question,
+          intent: reply.intent, answerText: reply.text, references: reply.references
         });
         state.learningData = learningStore.exportData();
       }

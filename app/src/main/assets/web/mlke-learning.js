@@ -5,6 +5,19 @@
 }(typeof globalThis !== 'undefined' ? globalThis : this, function () {
   'use strict';
 
+  var RATING_SCORES = {positive: 1, neutral: 0, negative: -1};
+
+  function uniqueTerms(input) {
+    var seen = Object.create(null), output = [];
+    (Array.isArray(input) ? input : []).forEach(function (value) {
+      var term = String(value == null ? '' : value).trim().toLowerCase();
+      if (!term || term.length > 80 || seen[term]) return;
+      seen[term] = true;
+      output.push(term);
+    });
+    return output;
+  }
+
   function LearningStore(initialData) {
     var data = initialData || {};
     this.experience = Array.isArray(data.experience) ? data.experience : [];
@@ -15,17 +28,20 @@
   }
 
   LearningStore.prototype.recordExperience = function (exp) {
-    if (!exp) return;
+    if (!exp) return null;
+    var rating = Object.prototype.hasOwnProperty.call(RATING_SCORES, exp.userRating) ? exp.userRating : null;
     var record = {
       id: exp.id || ('exp-' + Date.now() + '-' + Math.random().toString(36).slice(2, 6)),
+      messageId: String(exp.messageId || ''),
       timestamp: Date.now(),
-      question: exp.question || '',
+      question: String(exp.question || ''),
       intent: exp.intent || 'general',
       entities: Array.isArray(exp.entities) ? exp.entities : [],
       retrievedChunks: Array.isArray(exp.retrievedChunks) ? exp.retrievedChunks : [],
       answerText: exp.answerText || '',
       references: Array.isArray(exp.references) ? exp.references : [],
-      userRating: exp.userRating || null,
+      userRating: rating,
+      ratingUpdatedAt: rating ? Date.now() : null,
       correctionText: exp.correctionText || null
     };
     this.experience.unshift(record);
@@ -35,20 +51,54 @@
     return record.id;
   };
 
+  LearningStore.prototype.getExperience = function (experienceId) {
+    var id = String(experienceId || '');
+    if (!id) return null;
+    return this.experience.find(function (record) { return record && record.id === id; }) || null;
+  };
+
+  LearningStore.prototype.adjustTermWeights = function (questionTerms, delta) {
+    var terms = uniqueTerms(questionTerms);
+    var amount = Number(delta);
+    if (!Number.isFinite(amount) || !terms.length || amount === 0) return 0;
+    terms.forEach(function (term) {
+      var stored = Number(this.termWeights[term]);
+      var current = Number.isFinite(stored) ? Math.max(0.5, Math.min(2.0, stored)) : 1.0;
+      var updated = Math.max(0.5, Math.min(2.0, current + amount));
+      this.termWeights[term] = Number(updated.toFixed(3));
+    }, this);
+    return terms.length;
+  };
+
+  // Legacy API retained for existing callers; duplicate tokens count only once.
   LearningStore.prototype.applyFeedback = function (questionTerms, isPositive) {
-    var terms = Array.isArray(questionTerms) ? questionTerms : [];
-    var delta = isPositive ? 0.05 : -0.05;
-    for (var i = 0; i < terms.length; i++) {
-      var t = String(terms[i]).toLowerCase();
-      var current = this.termWeights[t] !== undefined ? this.termWeights[t] : 1.0;
-      var updated = Math.max(0.5, Math.min(2.0, current + delta));
-      this.termWeights[t] = Number(updated.toFixed(3));
+    return this.adjustTermWeights(questionTerms, isPositive ? 0.05 : -0.05);
+  };
+
+  // Apply only the difference from the previous rating. Repeated taps cannot
+  // keep changing weights; switching a rating reverses its previous effect.
+  LearningStore.prototype.rateExperience = function (experienceId, rating, questionTerms) {
+    var record = this.getExperience(experienceId);
+    if (!record) return {changed: false, reason: 'not-found'};
+    if (!Object.prototype.hasOwnProperty.call(RATING_SCORES, rating)) {
+      return {changed: false, reason: 'invalid-rating'};
     }
+    var previous = Object.prototype.hasOwnProperty.call(RATING_SCORES, record.userRating)
+      ? record.userRating : null;
+    if (previous === rating) return {changed: false, reason: 'unchanged', rating: previous};
+
+    var previousScore = previous === null ? 0 : RATING_SCORES[previous];
+    var delta = (RATING_SCORES[rating] - previousScore) * 0.05;
+    var updatedTerms = this.adjustTermWeights(questionTerms, delta);
+    record.userRating = rating;
+    record.ratingUpdatedAt = Date.now();
+    return {changed: true, previous: previous, rating: rating, updatedTerms: updatedTerms, delta: delta};
   };
 
   LearningStore.prototype.getTermWeight = function (term) {
     var t = String(term || '').toLowerCase();
-    return this.termWeights[t] !== undefined ? this.termWeights[t] : 1.0;
+    var value = Number(this.termWeights[t]);
+    return Number.isFinite(value) ? Math.max(0.5, Math.min(2.0, value)) : 1.0;
   };
 
   LearningStore.prototype.recordCorrection = function (item) {
@@ -62,7 +112,7 @@
       context: item.context || '',
       docName: item.docName || '',
       page: item.page || null,
-      status: 'user-confirmed' // 'candidate' | 'evidence-backed' | 'user-confirmed' | 'rejected'
+      status: 'user-confirmed'
     };
     this.corrections.unshift(correction);
     return correction;
@@ -72,9 +122,7 @@
     var orig = String(originalText || '').trim().toLowerCase();
     for (var i = 0; i < this.corrections.length; i++) {
       var c = this.corrections[i];
-      if (c.status === 'user-confirmed' && c.original.toLowerCase() === orig) {
-        return c;
-      }
+      if (c.status === 'user-confirmed' && c.original.toLowerCase() === orig) return c;
     }
     return null;
   };
@@ -101,14 +149,14 @@
 
   LearningStore.prototype.updateCandidateStatus = function (candidateId, newStatus) {
     var cand = this.candidates.find(function (c) { return c.id === candidateId; });
-    if (!cand) return false;
-    cand.status = newStatus; // 'user-confirmed' or 'rejected'
+    if (!cand || (newStatus !== 'user-confirmed' && newStatus !== 'rejected')) return false;
+    cand.status = newStatus;
     return true;
   };
 
   LearningStore.prototype.exportData = function () {
     return {
-      version: 1,
+      version: 2,
       experience: this.experience,
       corrections: this.corrections,
       termWeights: this.termWeights,

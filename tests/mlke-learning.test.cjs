@@ -62,6 +62,55 @@ test('Learning Scenario 3: Feedback-weighted retrieval ranking adjustment', () =
   assert.ok(store.getTermWeight('security') < 1.0);
 });
 
+test('Per-answer feedback is linked, idempotent, reversible, and persistent', () => {
+  const store = new LearningStore();
+  const experienceId = store.recordExperience({
+    messageId: 'message-1', question: 'DNS and routing', answerText: 'A grounded answer'
+  });
+  const record = store.getExperience(experienceId);
+  assert.equal(record.messageId, 'message-1');
+  assert.equal(record.userRating, null);
+
+  const positive = store.rateExperience(experienceId, 'positive', ['dns', 'routing', 'dns']);
+  assert.equal(positive.changed, true);
+  assert.equal(positive.updatedTerms, 2);
+  assert.equal(store.getTermWeight('dns'), 1.05);
+  assert.equal(store.getTermWeight('routing'), 1.05);
+
+  const repeated = store.rateExperience(experienceId, 'positive', ['dns', 'routing']);
+  assert.equal(repeated.changed, false);
+  assert.equal(repeated.reason, 'unchanged');
+  assert.equal(store.getTermWeight('dns'), 1.05);
+
+  const changed = store.rateExperience(experienceId, 'negative', ['dns', 'routing']);
+  assert.equal(changed.changed, true);
+  assert.equal(store.getTermWeight('dns'), 0.95);
+  assert.equal(record.userRating, 'negative');
+
+  const neutral = store.rateExperience(experienceId, 'neutral', ['dns', 'routing']);
+  assert.equal(neutral.changed, true);
+  assert.equal(store.getTermWeight('dns'), 1.0);
+
+  const restored = new LearningStore(store.exportData());
+  assert.equal(restored.getExperience(experienceId).userRating, 'neutral');
+  assert.equal(restored.getExperience(experienceId).messageId, 'message-1');
+  assert.equal(restored.getTermWeight('dns'), 1.0);
+  assert.equal(restored.exportData().version, 2);
+});
+
+test('Feedback rejects invalid and unknown ratings and keeps learned weights bounded', () => {
+  const store = new LearningStore();
+  const id = store.recordExperience({question: 'security'});
+  assert.equal(store.rateExperience(id, 'maybe', ['security']).reason, 'invalid-rating');
+  assert.equal(store.rateExperience('missing', 'positive', ['security']).reason, 'not-found');
+  assert.equal(store.getTermWeight('security'), 1.0);
+
+  for (let i = 0; i < 50; i++) store.applyFeedback(['security'], true);
+  assert.equal(store.getTermWeight('security'), 2.0);
+  for (let i = 0; i < 80; i++) store.applyFeedback(['security'], false);
+  assert.equal(store.getTermWeight('security'), 0.5);
+});
+
 test('Learning Scenario 4: Extracted knowledge persistence & notebook isolation', () => {
   const store = new LearningStore();
   store.recordExperience({ question: 'ما هو TCP؟', answerText: 'بروتوكول موثوق' });
