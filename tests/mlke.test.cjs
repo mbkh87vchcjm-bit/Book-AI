@@ -80,3 +80,34 @@ test('MLKE Integration: Missing evidence question returns explicit notice', () =
   assert.equal(res.origin, 'miss');
   assert.match(res.text, /لم أجد معلومات كافية/);
 });
+
+
+test('Arabic intent precedence: "ما هي أنواع..." is classification, not definition', () => {
+  assert.equal(Query.classifyIntent('ما هي أنواع الشبكات؟'), 'classification');
+  assert.equal(Query.classifyIntent('ماهي انواع قواعد البيانات'), 'classification');
+});
+
+test('Arabic colloquial question forms are recognized', () => {
+  assert.equal(Query.classifyIntent('ايش وظيفة DNS؟'), 'function');
+  assert.equal(Query.classifyIntent('وش الفرق بين TCP وUDP؟'), 'comparison');
+  assert.equal(Query.classifyIntent('ليش نستخدم HTTPS؟'), 'cause');
+  assert.equal(Query.classifyIntent('اشرح لي الذاكرة الافتراضية'), 'explanation');
+});
+
+test('Arabic question normalization handles diacritics, alef variants and Arabic-Indic digits', () => {
+  assert.equal(Query.normalizeArabic('إِدَارَةُ الشَّبَكَات ١٢'), 'ادارة الشبكات 12');
+});
+
+test('Entity extraction prefers recognized multiword concepts and canonical abbreviations', () => {
+  const lexicon = new Lexicon();
+  assert.deepEqual(Query.extractEntities('ما وظيفة بروتوكول التحكم بالنقل؟', lexicon), ['TCP']);
+  assert.deepEqual(Query.extractEntities('قارن بين TCP وUDP', lexicon), ['TCP', 'UDP']);
+  assert.deepEqual(Query.extractEntities('ما هي الذاكرة الافتراضية؟', lexicon), ['الذاكرة الافتراضية']);
+});
+
+test('Language detection distinguishes Arabic, English, mixed and empty input', () => {
+  assert.equal(Query.detectLanguage('ما وظيفة الشبكة؟'), 'ar');
+  assert.equal(Query.detectLanguage('What is a network?'), 'en');
+  assert.equal(Query.detectLanguage('شبك Net'), 'mixed');
+  assert.equal(Query.detectLanguage(''), 'unknown');
+});
