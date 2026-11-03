@@ -196,3 +196,72 @@ test('character n-grams do not turn unrelated short references into matches', ()
   ]}];
   assert.deepEqual(E.search(docs, 'zzqxvplm', 5).references, []);
 });
+
+
+test('structure-aware chunks preserve headings, bullets, offsets and page provenance', () => {
+  const source = '# Routing\nRouting selects a path for packets.\n\n• Static routing uses fixed routes.\n• Dynamic routing learns routes.';
+  const doc = {id:'structured',name:'Networks.pdf',type:'pdf',pages:[{page:9,text:source,ocr:true}]};
+  const chunks = E.chunksForDocument(doc, 80, 12);
+  assert.ok(chunks.some(c => c.structure === 'heading' && c.text === '# Routing'));
+  assert.equal(chunks.filter(c => c.structure === 'bullet').length, 2);
+  for (const chunk of chunks) {
+    assert.equal(source.slice(chunk.offset, chunk.endOffset), chunk.text);
+    assert.equal(chunk.page, 9);
+    assert.equal(chunk.docId, 'structured');
+    assert.equal(chunk.ocr, true);
+  }
+});
+
+test('structure-aware chunking splits long paragraphs with overlapping source offsets', () => {
+  const source = 'This is sentence one with enough words. This is sentence two with enough words. This is sentence three with enough words.';
+  const chunks = E.chunksForDocument({id:'long',name:'long.txt',type:'text',pages:[{page:2,text:source}]}, 55, 15);
+  assert.ok(chunks.length > 1);
+  assert.ok(chunks.every(c => source.slice(c.offset,c.endOffset) === c.text));
+  assert.ok(chunks[1].offset < chunks[0].endOffset);
+  // A requested 15-character overlap should retain most of that context,
+  // allowing a small shift to the next word boundary.
+  assert.ok(chunks[0].endOffset - chunks[1].offset >= 10,
+    'adjacent chunks should retain at least 10 characters of the requested 15-character overlap');
+});
+
+test('structure-aware chunking returns no chunks for empty pages', () => {
+  assert.deepEqual(E.chunksForDocument({id:'empty',pages:[{page:1,text:'  \n  '}] }), []);
+});
+
+const AnswerForMmr = require('../app/src/main/assets/web/local-answer.js');
+function mmrItem(text, score, order, page = 1) {
+  return {text,score,order,ref:{docId:'doc',docName:'doc.pdf',page}};
+}
+
+test('MMR rejects near-duplicate evidence when a relevant distinct passage exists', () => {
+  const selected = AnswerForMmr.selectDiverseItems([
+    mmrItem('Routing selects the best path for network packets.',10,0),
+    mmrItem('Routing selects the best path for network packets efficiently.',9.8,1),
+    mmrItem('A router forwards packets between different networks.',8,2)
+  ],2,0.72);
+  assert.equal(selected.length,2);
+  assert.ok(selected.some(x => x.order === 2));
+});
+
+test('MMR lambda one preserves pure relevance ranking', () => {
+  const selected = AnswerForMmr.selectDiverseItems([
+    mmrItem('Database tables store related records.',10,0),
+    mmrItem('Database tables store related records in rows.',9,1)
+  ],1,1);
+  assert.equal(selected[0].order,0);
+});
+
+test('MMR handles one candidate and empty results', () => {
+  assert.equal(AnswerForMmr.selectDiverseItems([mmrItem('A single useful passage.',3,0)],4).length,1);
+  assert.deepEqual(AnswerForMmr.selectDiverseItems([],5),[]);
+});
+
+test('MMR lambda zero favors lexical novelty after the first result', () => {
+  const selected = AnswerForMmr.selectDiverseItems([
+    mmrItem('TCP provides reliable transport between hosts.',10,0),
+    mmrItem('TCP provides reliable transport between network hosts.',9,1),
+    mmrItem('DNS resolves a domain name to an IP address.',2,2)
+  ],2,0);
+  assert.equal(selected.length,2);
+  assert.equal(selected[1].order,2);
+});
