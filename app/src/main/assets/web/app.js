@@ -18,9 +18,66 @@
   function icon(name) { return '<svg aria-hidden="true"><use href="#i-' + name + '"></use></svg>'; }
   function fmt(n) { try { return Number(n).toLocaleString('ar'); } catch (_) { return String(n); } }
   function messageText(text) { return esc(text).replace(/\*\*([^*\n]{1,200})\*\*/g, '<strong>$1</strong>'); }
-  function newSession() { return {id: uid(), title: 'دفتر جديد', created: Date.now(), documents: [], messages: [], semanticModelData: null, semanticModelStatus: 'pending'}; }
+  function emptyLearningData() {
+    return {version: 2, experience: [], corrections: [], termWeights: {}, candidates: []};
+  }
+  function newSession() {
+    return {id: uid(), title: 'دفتر جديد', created: Date.now(), documents: [], messages: [],
+      semanticModelData: null, semanticModelStatus: 'pending', learningData: emptyLearningData()};
+  }
   function isBusy() { return processing; }
   function activeSession() { return state.sessions.find(function (s) { return s.id === state.activeId; }) || state.sessions[0]; }
+
+  // Pre-section-10 builds stored learning data globally. Migrate answer experiences
+  // to the notebook that owns each assistant message; unlinked legacy learning state
+  // stays with the notebook that was active when the old build last saved it.
+  function migrateLearningData(obj) {
+    var legacy = obj.learningData;
+    var hasScopedData = obj.sessions.some(function (session) {
+      return Object.prototype.hasOwnProperty.call(session, 'learningData');
+    });
+    if (legacy && typeof legacy === 'object' && !hasScopedData) {
+      var ownerByMessage = Object.create(null), experiencesBySession = Object.create(null), orphaned = [];
+      obj.sessions.forEach(function (session) {
+        experiencesBySession[session.id] = [];
+        session.messages.forEach(function (message) {
+          if (message && message.role === 'assistant' && message.id) ownerByMessage[String(message.id)] = session.id;
+        });
+      });
+      (Array.isArray(legacy.experience) ? legacy.experience : []).forEach(function (experience) {
+        var owner = experience && ownerByMessage[String(experience.messageId || '')];
+        if (owner) experiencesBySession[owner].push(experience);
+        else orphaned.push(experience);
+      });
+      obj.sessions.forEach(function (session) {
+        var isActive = session.id === obj.activeId;
+        session.learningData = {
+          version: 2,
+          experience: (experiencesBySession[session.id] || []).concat(isActive ? orphaned : []),
+          corrections: isActive && Array.isArray(legacy.corrections) ? legacy.corrections : [],
+          termWeights: isActive && legacy.termWeights && typeof legacy.termWeights === 'object' && !Array.isArray(legacy.termWeights) ? legacy.termWeights : {},
+          candidates: isActive && Array.isArray(legacy.candidates) ? legacy.candidates : []
+        };
+      });
+      delete obj.learningData;
+      return;
+    }
+    obj.sessions.forEach(function (session) {
+      if (!session.learningData || typeof session.learningData !== 'object' || Array.isArray(session.learningData)) {
+        session.learningData = emptyLearningData();
+      }
+    });
+  }
+
+  function persistLearningData() {
+    var session = activeSession();
+    if (session && learningStore) session.learningData = learningStore.exportData();
+  }
+
+  function activateLearningStore() {
+    var session = activeSession();
+    learningStore = window.MlkeLearning ? new window.MlkeLearning(session ? session.learningData : null) : null;
+  }
 
   function loadState() {
     var raw = '';
@@ -46,6 +103,7 @@
           }
         });
         if (!obj.sessions.some(function (s) { return s.id === obj.activeId; })) obj.activeId = obj.sessions[0].id;
+        migrateLearningData(obj);
         return obj;
       }
     } catch (_) {
@@ -100,7 +158,7 @@
       return '<button class="session-button ' + (s.id === state.activeId ? 'active' : '') + '" data-session="' + esc(s.id) + '"' + (isBusy() ? ' disabled' : '') + '>' + icon('chat') + '<span>' + esc(s.title || 'دفتر جديد') + '</span></button>';
     }).join('');
     $('session-list').querySelectorAll('[data-session]').forEach(function (el) {
-      el.onclick = function () { if (isBusy()) return; state.activeId = el.dataset.session; saveState(); closeDrawers(); renderAll(); scrollBottom(); };
+      el.onclick = function () { if (isBusy()) return; persistLearningData(); state.activeId = el.dataset.session; activateLearningStore(); saveState(); closeDrawers(); renderAll(); scrollBottom(); };
     });
     $('breadcrumb-title').textContent = activeSession().title;
     $('new-session').disabled = isBusy();
@@ -191,7 +249,7 @@
         toast(result.reason === 'unchanged' ? 'هذا التقييم مسجل بالفعل.' : 'تعذر تسجيل التقييم.');
         return;
       }
-      state.learningData = learningStore.exportData();
+      persistLearningData();
       var saved = saveState();
       renderMessages();
       if (saved) toast('حُفظ تقييمك محليًا، وسيؤثر بقدر محدود في ترتيب نتائج البحث اللاحقة.');
@@ -279,7 +337,7 @@
     $('learning-ok').onclick = closeModal;
     $('reset-weights-btn').onclick = function () {
       if (learningStore) learningStore.resetWeights();
-      state.learningData = learningStore ? learningStore.exportData() : null;
+      persistLearningData();
       saveState();
       toast('تمت إعادة ضبط أوزان البحث.');
       closeModal();
@@ -567,7 +625,7 @@
           messageId: assistantMessage.id, question: question,
           intent: reply.intent, answerText: reply.text, references: reply.references
         });
-        state.learningData = learningStore.exportData();
+        persistLearningData();
       }
     } catch (_) {
       session.messages.push({id: uid(), role: 'assistant',
@@ -589,9 +647,10 @@
     };
     $('delete-session').onclick = function () {
       confirmAction('حذف الدفتر', 'سيُحذف الدفتر ومصادره ومحادثاته من هذا الجهاز نهائيًا.', 'حذف الدفتر', function () {
+        persistLearningData();
         state.sessions = state.sessions.filter(function (s) { return s.id !== session.id; });
         if (!state.sessions.length) state.sessions.push(newSession());
-        state.activeId = state.sessions[0].id; saveState(); renderAll(); toast('تم حذف الدفتر.');
+        state.activeId = state.sessions[0].id; activateLearningStore(); saveState(); renderAll(); toast('تم حذف الدفتر.');
       }, true);
     };
   }
@@ -599,7 +658,7 @@
   function init() {
     state = loadState();
     if (window.MlkeLearning) {
-      learningStore = new window.MlkeLearning(state.learningData);
+      activateLearningStore();
     }
     // A killed process cannot resume a native generation. Do not leave a fake streaming message.
     state.sessions.forEach(function (s) { s.messages.forEach(function (m) { if (m.streaming) { m.streaming = false; m.origin = 'error'; m.references = []; m.text = m.text ? m.text + '\n\n[انقطع التوليد]' : 'انقطع التوليد قبل اكتماله. حاول مجددًا.'; } }); });
@@ -609,7 +668,7 @@
     $('settings-btn').onclick = openSettings; $('top-settings').onclick = openSettings; $('mode-shortcut').onclick = openSettings;
     if ($('lexicon-btn')) $('lexicon-btn').onclick = openLexiconManager;
     if ($('learning-center-btn')) $('learning-center-btn').onclick = openLearningCenter;
-    $('new-session').onclick = function () { if (isBusy()) return; var s = newSession(); state.sessions.unshift(s); state.activeId = s.id; saveState(); closeDrawers(); renderAll(); };
+    $('new-session').onclick = function () { if (isBusy()) return; persistLearningData(); var s = newSession(); state.sessions.unshift(s); state.activeId = s.id; activateLearningStore(); saveState(); closeDrawers(); renderAll(); };
     $('session-more').onclick = function () { if (isBusy()) { toast('انتظر حتى تنتهي العملية الحالية.'); return; } openSessionOptions(); };
     ['add-source', 'mobile-add', 'welcome-upload', 'attach-btn'].forEach(function (id) { $(id).onclick = chooseFiles; });
     $('paste-source').onclick = openPaste;

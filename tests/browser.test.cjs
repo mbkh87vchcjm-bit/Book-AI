@@ -131,6 +131,51 @@ async function createScannedPdf(page) {
       assert.equal(await page.locator('[data-feedback="negative"]').getAttribute('aria-pressed'), 'true');
       await page.reload();
       assert.equal(await page.locator('[data-feedback="negative"]').getAttribute('aria-pressed'), 'true');
+
+      // Learning is notebook-scoped: rating the same question in another notebook
+      // must create independent experience records and independent term weights.
+      const firstSessionId = await page.evaluate(() => JSON.parse(localStorage.getItem('midad-state-v1')).activeId);
+      const firstLearning = await page.evaluate(() => {
+        const state = JSON.parse(localStorage.getItem('midad-state-v1'));
+        return state.sessions.find(session => session.id === state.activeId).learningData;
+      });
+      const learnedTerms = Object.keys(firstLearning.termWeights);
+      assert.ok(learnedTerms.length > 0, 'first notebook should persist learned question terms');
+
+      await page.locator('#menu-btn').click();
+      await page.locator('#new-session').click();
+      await upload(page, 'physics.pdf');
+      await ask(page, 'What is osmosis?');
+      await page.waitForSelector('.reference-card');
+      assert.equal(await page.locator('[data-feedback]').count(), 2);
+      assert.equal(await page.locator('[data-feedback="positive"]').getAttribute('aria-pressed'), 'false');
+      assert.equal(await page.locator('[data-feedback="negative"]').getAttribute('aria-pressed'), 'false');
+      const secondSessionId = await page.evaluate(() => JSON.parse(localStorage.getItem('midad-state-v1')).activeId);
+      await page.locator('[data-feedback="positive"]').click();
+
+      const scopedLearning = await page.evaluate(firstId => {
+        const state = JSON.parse(localStorage.getItem('midad-state-v1'));
+        return {
+          first: state.sessions.find(session => session.id === firstId).learningData,
+          second: state.sessions.find(session => session.id === state.activeId).learningData
+        };
+      }, firstSessionId);
+      assert.equal(scopedLearning.first.experience[0].userRating, 'negative');
+      assert.equal(scopedLearning.second.experience[0].userRating, 'positive');
+      learnedTerms.forEach(term => {
+        assert.notEqual(scopedLearning.first.termWeights[term], scopedLearning.second.termWeights[term],
+          'term weight must remain independent for ' + term);
+      });
+
+      await page.locator('#menu-btn').click();
+      await page.locator('[data-session="' + firstSessionId + '"]').click();
+      assert.equal(await page.locator('[data-feedback="negative"]').getAttribute('aria-pressed'), 'true');
+      await page.locator('#menu-btn').click();
+      await page.locator('[data-session="' + secondSessionId + '"]').click();
+      assert.equal(await page.locator('[data-feedback="positive"]').getAttribute('aria-pressed'), 'true');
+      await page.reload();
+      assert.equal(await page.locator('[data-feedback="positive"]').getAttribute('aria-pressed'), 'true');
+
       await page.locator('.reference-card').click();
       assert.match(await page.locator('.modal').innerText(), /semipermeable/);
       await page.locator('#open-full-page').click();
@@ -215,6 +260,51 @@ async function createScannedPdf(page) {
       await upload(page, 'scanned.pdf'); assert.match(await closeImportNotice(page), /تجريبية/);
       assert.equal(await page.locator('.source-item').count(), 1);
       await finish(scope, 'Protected PDF is rejected; existing image PDF is imported with a warning');
+    }
+
+    {
+      const scope = await browserPage(url), page = scope.page;
+      const legacyState = {
+        version: 1,
+        activeId: 'legacy-a',
+        sessions: [
+          {id: 'legacy-a', title: 'دفتر قديم أ', created: 1, documents: [], messages: [
+            {id: 'legacy-message-a', role: 'assistant', text: 'إجابة قديمة أ', origin: 'source', references: [], experienceId: 'legacy-exp-a'}
+          ]},
+          {id: 'legacy-b', title: 'دفتر قديم ب', created: 2, documents: [], messages: [
+            {id: 'legacy-message-b', role: 'assistant', text: 'إجابة قديمة ب', origin: 'source', references: [], experienceId: 'legacy-exp-b'}
+          ]}
+        ],
+        settings: {},
+        learningData: {
+          version: 2,
+          experience: [
+            {id: 'legacy-exp-a', messageId: 'legacy-message-a', question: 'DNS', answerText: 'A', userRating: 'positive', references: []},
+            {id: 'legacy-exp-b', messageId: 'legacy-message-b', question: 'routing', answerText: 'B', userRating: 'negative', references: []},
+            {id: 'legacy-exp-orphan', messageId: 'deleted-message', question: 'orphan', answerText: 'C', userRating: null, references: []}
+          ],
+          corrections: [{id: 'legacy-correction', original: 'old', corrected: 'new', status: 'user-confirmed'}],
+          termWeights: {dns: 1.2},
+          candidates: [{id: 'legacy-candidate', term: 'Legacy'}]
+        }
+      };
+      await page.evaluate(value => localStorage.setItem('midad-state-v1', JSON.stringify(value)), legacyState);
+      await page.reload();
+      assert.equal(await page.locator('[data-feedback="positive"]').getAttribute('aria-pressed'), 'true');
+      await page.locator('#menu-btn').click();
+      await page.locator('[data-session="legacy-b"]').click();
+      assert.equal(await page.locator('[data-feedback="negative"]').getAttribute('aria-pressed'), 'true');
+      const migrated = await page.evaluate(() => JSON.parse(localStorage.getItem('midad-state-v1')));
+      assert.equal(Object.prototype.hasOwnProperty.call(migrated, 'learningData'), false);
+      const notebookA = migrated.sessions.find(session => session.id === 'legacy-a').learningData;
+      const notebookB = migrated.sessions.find(session => session.id === 'legacy-b').learningData;
+      assert.deepEqual(notebookA.experience.map(item => item.id).sort(), ['legacy-exp-a', 'legacy-exp-orphan']);
+      assert.deepEqual(notebookB.experience.map(item => item.id), ['legacy-exp-b']);
+      assert.equal(notebookA.termWeights.dns, 1.2);
+      assert.deepEqual(notebookB.termWeights, {});
+      assert.equal(notebookA.corrections.length, 1);
+      assert.equal(notebookB.corrections.length, 0);
+      await finish(scope, 'Legacy global learning data migrates without losing ratings or mixing notebooks');
     }
 
     {
