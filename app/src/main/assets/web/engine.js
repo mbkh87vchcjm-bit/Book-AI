@@ -5,6 +5,9 @@
 }(typeof globalThis !== 'undefined' ? globalThis : this, function (LexiconClass) {
   'use strict';
 
+  // Minimum confidence for the v2 local semantic signal to enter RRF.
+  var SEMANTIC_MIN_SCORE = 0.74;
+
   var STOP = new Set(('from in on at by with for of to is are was were a an the and or as it its be what who how why when where explain tell me about this that those these please give my your based document documents source sources file files من في على عن إلى الى ما ماذا لماذا هل هذا هذه ذلك تلك هو هي هم أنا انت ان كان كانت يكون تكون كيف كم متى أين اين مع دون او و ثم قد لقد عند حتى كل بين بعد قبل الذي التي الذين والتي وهو وهي بأن لان أن إن بعض هناك يوجد وجود حسب حول لي ليش اي أي فقط شرح اشرح اريد أريد أعطني اعطني سؤال التالي التاليه التالية يلي لدي عندي').split(/\s+/));
 
   var getLexicon = function () {
@@ -494,8 +497,9 @@
         return Math.max(0, Math.min(1, Number(semanticModel.similarity(query, chunk.text)) || 0));
       } catch (_) { return 0; }
     });
+    // Operating threshold for v2 sentence-aware, coverage-calibrated semantic embeddings.
     var semantic = semanticScores.map(function (score, index) { return {index: index, score: score}; })
-      .filter(function (item) { return item.score >= 0.78; })
+      .filter(function (item) { return item.score >= SEMANTIC_MIN_SCORE; })
       .sort(function (a, b) { return b.score - a.score || a.index - b.index; })
       .map(function (item) { return {index: item.index, signal: 'semantic'}; });
 
@@ -550,5 +554,5 @@
     return chars.slice(0, Math.max(0, max - 1)).join('').trimEnd() + '…';
   }
 
-  return {normalize: normalize, words: words, baseWords: baseWords, characterNgramCounts: characterNgramCounts, characterTfidfScores: characterTfidfScores, phraseTerms: phraseTerms, containsOrderedPhrase: containsOrderedPhrase, reciprocalRankFusion: reciprocalRankFusion, extractPdfText: extractPdfText, chunksForDocument: chunksForDocument, search: search, shorten: shorten};
+  return {normalize: normalize, words: words, baseWords: baseWords, characterNgramCounts: characterNgramCounts, characterTfidfScores: characterTfidfScores, phraseTerms: phraseTerms, containsOrderedPhrase: containsOrderedPhrase, reciprocalRankFusion: reciprocalRankFusion, extractPdfText: extractPdfText, chunksForDocument: chunksForDocument, search: search, shorten: shorten, semanticMinScore: SEMANTIC_MIN_SCORE};
 }));
