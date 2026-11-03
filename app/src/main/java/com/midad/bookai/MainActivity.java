@@ -156,7 +156,7 @@ public final class MainActivity extends Activity {
         if (!isAllowedAssetUri(uri)) return blockedResponse(403, "Forbidden");
         String relative = assetRelativePath(uri);
         try {
-            InputStream input = getAssets().open(relative);
+            InputStream input = getAssets().open("web/" + relative);
             String lower = relative.toLowerCase(Locale.ROOT);
             String mime = mimeTypeFor(lower);
             String encoding = isTextAsset(lower) ? "UTF-8" : null;
