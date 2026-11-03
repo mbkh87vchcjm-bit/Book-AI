@@ -145,3 +145,54 @@ test('semantic reranking can retrieve a high-confidence related passage without 
   assert.ok(result.references.some(ref => ref.page === 1));
   assert.ok(result.semanticUsed);
 });
+
+
+test('character TF-IDF retrieves a close Arabic spelling variant when BM25 has no exact token', () => {
+  const docs = [{id:'typo',name:'Arabic.pdf',type:'pdf',pages:[
+    {page:1,text:'التوجية في الشبكات يساعد على اختيار المسار المناسب.'},
+    {page:2,text:'قواعد البيانات تخزن السجلات في جداول مترابطة.'}
+  ]}];
+  const result = E.search(docs, 'التوجيه', 5);
+  assert.equal(result.references[0].page, 1);
+  assert.ok(result.retrievalStats.character > 0);
+  assert.ok(result.retrievalDiagnostics[0].characterRank > 0);
+});
+
+test('ordered phrase matching contributes a distinct retrieval signal', () => {
+  const docs = [{id:'phrase',name:'Protocols.pdf',type:'pdf',pages:[
+    {page:1,text:'بروتوكول في الشبكات يختار المسار ويعمل على التحكم بمرور البيانات ونقلها.'},
+    {page:2,text:'بروتوكول التحكم بالنقل Transmission Control Protocol يوفر نقلًا موثوقًا.'}
+  ]}];
+  const result = E.search(docs, 'بروتوكول التحكم بالنقل', 5);
+  assert.ok(result.retrievalStats.phrase > 0);
+  assert.equal(result.references[0].page, 2);
+  assert.equal(result.retrievalDiagnostics[0].phraseMatch, true);
+});
+
+test('reciprocal rank fusion promotes a result supported by independent retrievers', () => {
+  const fused = E.reciprocalRankFusion([
+    [{index:0,signal:'bm25'},{index:1,signal:'bm25'}],
+    [{index:1,signal:'character'},{index:2,signal:'character'}],
+    [{index:1,signal:'phrase'}]
+  ]);
+  assert.equal(fused[0].index, 1);
+  assert.equal(fused[0].ranks.bm25, 2);
+  assert.equal(fused[0].ranks.character, 1);
+  assert.equal(fused[0].ranks.phrase, 1);
+});
+
+test('hybrid retrieval preserves BM25 matches and reports component statistics', () => {
+  const result = E.search([reference], 'الجاذبية', 5);
+  assert.equal(result.references[0].page, 2);
+  assert.ok(result.retrievalStats.bm25 > 0);
+  assert.ok(Array.isArray(result.retrievalDiagnostics));
+  assert.ok(result.retrievalDiagnostics[0].fusedScore > 0);
+});
+
+test('character n-grams do not turn unrelated short references into matches', () => {
+  const docs = [{id:'tiny',name:'Tiny.pdf',type:'pdf',pages:[
+    {page:1,text:'الفيزياء تدرس الطاقة والحركة والقوة.'},
+    {page:2,text:'قواعد البيانات تنظم السجلات والجداول.'}
+  ]}];
+  assert.deepEqual(E.search(docs, 'zzqxvplm', 5).references, []);
+});
