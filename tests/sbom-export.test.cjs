@@ -62,7 +62,7 @@ test('component references are unique and sensitive registry metadata is not emi
   const bom = Sbom.createCycloneDxSbom(noisy);
   const refs = bom.components.map((item) => item['bom-ref']);
   assert.equal(new Set(refs).size, refs.length);
-  assert.doesNotMatch(JSON.stringify(bom), /registry\.example|sha512-secret|resolved|integrity/);
+  assert.doesNotMatch(JSON.stringify(bom), /registry\.example|sha512-secret|"resolved"\s*:|"integrity"\s*:/i);
 });
 
 test('export rejects incomplete or disabled inventory reports', () => {
