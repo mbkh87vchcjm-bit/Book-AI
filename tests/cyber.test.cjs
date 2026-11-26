@@ -83,6 +83,7 @@ test('source analysis fails closed until a relative file path is supplied', () =
 test('local static analysis is authorized only inside selected scope', () => {
   const policy = Policy.createPolicy({scope: {allowedPaths: ['src']}});
   assert.equal(Policy.authorizeAction('static-analysis', policy, {path: 'src/app.php', analyzer: 'builtin'}).allowed, true);
+  assert.equal(Policy.authorizeAction('dependency-inventory', policy, {path: 'src/package.json'}).reason, 'analyzer-not-enabled');
   assert.equal(Policy.authorizeAction('static-analysis', policy, {path: 'docs/app.php'}).reason, 'outside-scope');
   assert.equal(Policy.authorizeAction('static-analysis', policy, {path: 'src/app.php', analyzer: 'semgrep'}).reason, 'analyzer-not-enabled');
 });
@@ -129,7 +130,7 @@ test('severity threshold is configurable', () => {
 test('sensitive values are redacted before display or export', () => {
   assert.equal(Policy.redactSecret(''), '');
   assert.equal(Policy.redactSecret('abc'), '[REDACTED]');
-  assert.match(Policy.redactSecret('ghp_abcdefghijklmnopqrstuvwxyz'), /^ghp.*REDACTED/);
+  assert.equal(Policy.redactSecret('ghp_abcdefghijklmnopqrstuvwxyz'), '[REDACTED]');
 });
 
 test('concept engine distinguishes authentication and authorization', () => {
