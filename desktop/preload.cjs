@@ -7,6 +7,6 @@ contextBridge.exposeInMainWorld('midadCyber', Object.freeze({
   getPolicy: () => ipcRenderer.invoke('cyber:get-policy'),
   savePolicy: (policy) => ipcRenderer.invoke('cyber:save-policy', policy),
   scanProject: () => ipcRenderer.invoke('cyber:scan-project'),
-  exportReport: (report) => ipcRenderer.invoke('cyber:export-report', report),
-  exportSbom: (report) => ipcRenderer.invoke('cyber:export-sbom', report)
+  exportReport: () => ipcRenderer.invoke('cyber:export-report'),
+  exportSbom: () => ipcRenderer.invoke('cyber:export-sbom')
 }));
