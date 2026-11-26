@@ -70,7 +70,7 @@ The glossary also includes XSS, CSRF, IDOR/BOLA, SSRF, session management, MFA, 
 
 ## Phase 1.3 — Partial CycloneDX SBOM
 
-The dependency inventory can now be exported as CycloneDX 1.7 JSON. The document identifies itself as a partial, pre-build manifest inventory; exact versions are separated from version constraints, optional and development dependencies receive distinct scope labels, and source manifest paths are kept as local metadata. The exporter omits registry URLs, integrity hashes, and download metadata.
+The dependency inventory can now be exported as CycloneDX 1.7 JSON. The document identifies itself as a partial, pre-build manifest inventory. Exact versions are separated from version constraints. Optional and development scopes are preserved when supported by manifest or lockfile evidence; unknown scope remains unset rather than being guessed. When a locked package and a declaration refer to the same package, the locked version takes precedence and the declaration constraint is retained as metadata. Source manifest paths are retained as local metadata. The exporter omits registry URLs, integrity hashes, and download metadata.
 
-This is not a complete SBOM or SCA result. Dependency relationships are not resolved, no PURLs or cryptographic component hashes are generated, license identification is not implemented, and no CVE feed is consulted. The app remains offline. The export must not be described as proof of safety or of vulnerability absence.
+This is not a complete SBOM or SCA result. Full dependency relationships are not resolved, no PURLs or cryptographic component hashes are generated, license identification is not implemented, and no CVE feed is consulted. The app remains offline. Export handlers use the latest report retained by the Electron main process; renderer-supplied report objects are not accepted. The export must not be described as proof of safety or of vulnerability absence.
 
