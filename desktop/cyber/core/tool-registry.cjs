@@ -436,50 +436,184 @@ function publicTool(tool) {
 function categoryMatches(tool,categoryId) {
   return !categoryId || categoryId==='all' || tool.categories.includes(categoryId);
 }
+
+const STOP_WORDS = new Set([
+  'ما','ماذا','هي','هو','هل','كيف','متى','اين','لماذا','اريد','ابغى','احتاج','محتاج',
+  'اي','ايش','التي','الذي','هذا','هذه','ذلك','مع','من','في','على','الى','عن','ثم',
+  'هل','لي','ليكون','يكون','يمكن','ممكن','افضل','مناسب','مناسبة','اداة','ادوات',
+  'the','a','an','and','or','to','for','of','is','are','what','which','how','when',
+  'where','why','can','could','should','would','please','help','me','i','we','my',
+  'use','using','tool','tools','best','need','want','with','from','into','about'
+]);
+
+const TOKEN_SYNONYMS = Object.freeze({
+  'كود':['code','source','sourcecode'],
+  'الكود':['code','source','sourcecode'],
+  'شيفرة':['code','source','sourcecode'],
+  'الشيفرة':['code','source','sourcecode'],
+  'برمجي':['code','program','source'],
+  'برمجية':['code','program','source'],
+  'تحليل':['analysis','analyze','review','audit'],
+  'فحص':['scan','review','audit','analysis'],
+  'مراجعة':['review','audit','analysis'],
+  'ثغرات':['vulnerability','vulnerabilities','weakness'],
+  'ثغرة':['vulnerability','weakness'],
+  'امان':['security','secure'],
+  'امن':['security','secure'],
+  'شبكة':['network','traffic'],
+  'شبكات':['network','traffic'],
+  'منافذ':['ports','port'],
+  'اندرويد':['android','apk','mobile'],
+  'هاتف':['mobile','android','apk'],
+  'تطبيق':['application','app'],
+  'ذاكرة':['memory','dump','volatility'],
+  'تبعيات':['dependency','dependencies','sbom'],
+  'اعتماديات':['dependency','dependencies','sbom'],
+  'حزم':['packages','dependencies'],
+  'سجل':['logs','log','events'],
+  'سجلات':['logs','log','events'],
+  'ملفات':['files','file'],
+  'ملف':['file','files'],
+  'جنائي':['forensics','forensic'],
+  'جنائية':['forensics','forensic'],
+  'حاويات':['containers','docker','kubernetes'],
+  'سحابة':['cloud','aws','azure','gcp'],
+  'لاسلكي':['wireless','wifi'],
+  'واي':['wifi','wireless'],
+  'كلمات':['password','hash'],
+  'مرور':['password','credential']
+});
+
+const INTENTS = Object.freeze([
+  {cues:['تحليل الكود','فحص الكود','مراجعة الكود','تحليل الشيفرة','فحص الشيفرة','الكود المصدري','source code analysis','static code analysis','static analysis','code review','sast'],tools:['semgrep','tree-sitter','gitleaks']},
+  {cues:['تطبيق اندرويد','تطبيقات اندرويد','ملف apk','تحليل apk','android app','apk analysis','mobile application'],tools:['mobsf','jadx','apktool','androguard']},
+  {cues:['ملف ذاكرة','تفريغ الذاكرة','تحليل الذاكرة','memory dump','memory forensics'],tools:['volatility']},
+  {cues:['تحقيق جنائي رقمي','ادلة رقمية','صورة قرص','disk image','digital forensics','disk forensics'],tools:['autopsy','sleuth-kit','ftk-imager','foremost','bulk-extractor']},
+  {cues:['قائمة مكونات البرمجيات','قائمة مكونات البرنامج','software bill of materials','sbom','مكونات البرنامج'],tools:['syft','grype','osv-scanner']},
+  {cues:['ثغرات الاعتماديات','فحص الحزم','dependency vulnerabilities','dependency audit','فحص التبعيات'],tools:['osv-scanner','grype','trivy']},
+  {cues:['اسرار في الكود','مفاتيح داخل الكود','رموز وصول مكشوفة','secret scanning','leaked secrets','api keys in source'],tools:['gitleaks']},
+  {cues:['تحليل حركة الشبكة','ملف pcap','مراقبة الشبكة','network traffic analysis','pcap analysis'],tools:['zeek','suricata','tshark','tcpdump']},
+  {cues:['جرد الشبكة','منافذ الشبكة','خدمات الشبكة','network inventory','port inventory'],tools:['nmap','naabu','rustscan','masscan']},
+  {cues:['تطبيق ويب','موقع ويب','واجهات api','web application','web api','api security'],tools:['burp-suite','owasp-zap','caido','postman']},
+  {cues:['تحليل dns','سجلات dns','dns records','dns analysis'],tools:['dnsrecon','dnsenum','dig']},
+  {cues:['تحليل البرمجيات الخبيثة','عينة مشبوهة','ملف مشبوه','malware analysis','suspicious binary'],tools:['ghidra','yara','cuckoo','remnux','radare2']},
+  {cues:['اختبار متانة البرنامج','اختبار المدخلات','fuzz testing','fuzzing','برنامج تجريبي'],tools:['afl','libfuzzer','honggfuzz','boofuzz','radamsa']},
+  {cues:['مراجعة اعدادات السحابة','تدقيق السحابة','cloud security posture','cloud misconfiguration'],tools:['prowler','scoutsuite','checkov','trivy']},
+  {cues:['امن نموذج الذكاء الاصطناعي','اختبار النموذج اللغوي','llm security','ai model security','prompt injection testing'],tools:['garak','promptfoo','pyrit','adversarial-robustness-toolbox-art','cleverhans']},
+  {cues:['استخبارات التهديدات','مؤشرات الاختراق','threat intelligence','indicators of compromise','ioc'],tools:['misp','opencti','thehive','cortex']},
+  {cues:['تحليل كلمات المرور','تدقيق كلمات المرور','password hash audit','hash analysis'],tools:['hashcat','john-the-ripper','hashid']},
+  {cues:['تحليل لاسلكي','شبكة واي فاي','wifi analysis','wireless security'],tools:['kismet','aircrack-ng']},
+  {cues:['البحث عن حسابات باسم المستخدم','البحث عن اسم مستخدم في المنصات','username osint','social media username'],tools:['sherlock']},
+  {cues:['البحث عن معلومات البريد الالكتروني','تحليل بريد الكتروني','email osint','email address investigation'],tools:['holehe','ghunt','theharvester','hunter','spiderfoot']},
+  {cues:['اكتشاف النطاقات الفرعية','حصر النطاقات الفرعية','subdomain enumeration','subdomain discovery'],tools:['subfinder','amass','dnsx','httpx','naabu']},
+  {cues:['معلومات تسجيل النطاق','بيانات whois','domain registration lookup','dns records lookup'],tools:['whois','dig','dnsrecon','dnsenum']},
+  {cues:['اكتشاف تقنيات الموقع','معرفة التقنيات المستخدمة في الموقع','website technology detection','web technology fingerprinting'],tools:['whatweb','wappalyzer','netcraft']},
+  {cues:['تحليل بيانات ملفات المستندات','استخراج بيانات الصور الوصفية','document metadata analysis','file metadata'],tools:['metagoofil','foca','exiftool']},
+  {cues:['تحليل علاقات active directory','علاقات المستخدمين والمجموعات في الدومين','active directory graph','ad relationship analysis','active directory'],tools:['bloodhound','sharphound']},
+  {cues:['تحليل ملف jar','عرض كود java من jar','java decompiler','jar decompilation','java jar','decompiled source'],tools:['jd-gui']},
+  {cues:['تحليل firmware','تحليل ملفات firmware','firmware analysis','firmware extraction','فحص ملف firmware'],tools:['binwalk','firmwalker']},
+  {cues:['قواعد كشف السجلات','تحويل قواعد sigma','detection rules','security log detection'],tools:['sigma','yara','yara-x']},
+  {cues:['تحليل سجلات الاجهزة','مراقبة الاجهزة الطرفية','endpoint telemetry','endpoint detection data'],tools:['osquery','velociraptor','kape']},
+  {cues:['فحص حاويات docker','تحليل صور الحاويات','container image scan','kubernetes security posture'],tools:['trivy','kube-bench','falco']},
+  {cues:['تحليل نموذج ذكاء اصطناعي','اختبار سلامة نموذج لغوي','llm red team evaluation','llm safety evaluation'],tools:['garak','promptfoo','pyrit','adversarial-robustness-toolbox-art']},
+  {cues:['تحليل اشارات الراديو','استقبال اشارات راديوية','radio signal analysis','software defined radio'],tools:['rtl-sdr','hackrf-one','ubertooth']}
+]);
+
+function queryTokens(value) {
+  const normalized = normalize(value);
+  const original = normalized.split(' ').filter(Boolean);
+  const expanded = new Set();
+  for (const token of original) {
+    if (token.length < 2 || STOP_WORDS.has(token)) continue;
+    expanded.add(token);
+    const withoutArticle = token.replace(/^(?:وال|بال|كال|فال|لل|ال)/,'');
+    if (withoutArticle.length >= 2 && !STOP_WORDS.has(withoutArticle)) expanded.add(withoutArticle);
+    const withoutShortPrefix = token.replace(/^[وبفكل]/,'');
+    if (withoutShortPrefix.length >= 3 && !STOP_WORDS.has(withoutShortPrefix)) expanded.add(withoutShortPrefix);
+    for (const synonym of TOKEN_SYNONYMS[token] || []) expanded.add(synonym);
+  }
+  return Array.from(expanded);
+}
+
+function intentBoost(tool, query) {
+  let boost = 0;
+  for (const intent of INTENTS) {
+    const matched = intent.cues.some((cue) => {
+      const phrase = normalize(cue);
+      return phrase.length >= 3 && (' ' + query + ' ').includes(' ' + phrase + ' ');
+    });
+    if (matched && intent.tools.includes(tool.id)) boost = Math.max(boost, 32);
+  }
+  return boost;
+}
+
+function searchableFields(tool) {
+  return {
+    name: normalize(tool.name + ' ' + tool.id),
+    aliases: normalize(tool.aliases.join(' ')),
+    description: normalize([
+      tool.categoryName,tool.categoryEnglish,tool.summary,tool.purpose || '',
+      tool.inputs.join(' '),tool.outputs.join(' '),tool.offline,tool.network,
+      tool.risk,tool.limits
+    ].join(' '))
+  };
+}
+
 function scoreTool(tool,query) {
   const q=normalize(query);
   if (!q) return 10;
   const name=normalize(tool.name);
   const aliases=tool.aliases.map(normalize);
-  const haystack=normalize([tool.name,tool.id,...tool.aliases,tool.categoryName,tool.categoryEnglish,tool.summary,tool.purpose||''].join(' '));
-  if (name===q || tool.id===slug(q)) return 100;
-  if (aliases.includes(q)) return 95;
-  if (name.includes(q) || aliases.some((alias)=>alias.includes(q))) return 85;
-  if (haystack.includes(q)) return 65;
-  const terms=q.split(' ').filter(Boolean);
-  const hits=terms.filter((term)=>haystack.includes(term)).length;
-  return hits?Math.round(40*hits/terms.length):0;
+  if (name===q || tool.id===slug(q)) return 120;
+  if (aliases.includes(q)) return 110;
+  if (name.includes(q) || aliases.some((alias)=>alias.length>=3 && q.includes(alias))) return 95;
+
+  const fields=searchableFields(tool);
+  const allText=fields.name+' '+fields.aliases+' '+fields.description;
+  if (allText.includes(q)) return 85;
+
+  const tokens=queryTokens(q);
+  if (!tokens.length) return 0;
+  const nameTokens=new Set((fields.name+' '+fields.aliases).split(' ').filter(Boolean));
+  const descriptionTokens=new Set(fields.description.split(' ').filter(Boolean));
+  let score=0, matched=0;
+  for (const token of tokens) {
+    if (nameTokens.has(token)) {score+=7;matched+=1;}
+    else if (descriptionTokens.has(token)) {score+=2.5;matched+=1;}
+    else if (token.length>=4 && (fields.name+' '+fields.aliases).includes(token)) {score+=4;matched+=1;}
+    else if (token.length>=4 && fields.description.includes(token)) {score+=1.5;matched+=1;}
+  }
+  score += intentBoost(tool,q);
+  const coverage=matched/Math.max(1,tokens.length);
+  score += coverage*12;
+  return Math.round(score);
 }
 function searchTools(query,categoryId,limit) {
   const maximum=Number.isSafeInteger(limit)?Math.max(1,Math.min(limit,100)):40;
   const matches=TOOLS.map((tool)=>({tool,score:scoreTool(tool,query)}))
-    .filter((item)=>item.score>0&&categoryMatches(item.tool,categoryId))
+    .filter((item)=>item.score>=5&&categoryMatches(item.tool,categoryId))
     .sort((a,b)=>b.score-a.score||categoryOrder.get(a.tool.category)-categoryOrder.get(b.tool.category)||a.tool.name.localeCompare(b.tool.name));
   return {
     query:String(query||'').slice(0,200),category:categoryId||'all',total:matches.length,
-    results:matches.slice(0,maximum).map((item)=>publicTool(item.tool))
+    results:matches.slice(0,maximum).map((item)=>({...publicTool(item.tool),relevanceScore:item.score}))
   };
-}
-function getTool(idOrName) {
-  const key=normalize(idOrName);
-  const canonical=ALIASES[key];
-  const target=canonical?slug(canonical):slug(key);
-  const direct=toolsById.get(target);
-  if (direct) return publicTool(direct);
-  const found=TOOLS.find((tool)=>normalize(tool.name)===key||tool.aliases.some((alias)=>normalize(alias)===key));
-  return found?publicTool(found):null;
 }
 function buildKnowledgeContext(question,maximum) {
   const result=searchTools(question,'all',maximum||8);
+  const records=result.results.map((tool)=>({
+    name:tool.name,category:tool.categoryName,knowledgeStatus:tool.knowledgeStatus,
+    summary:tool.summary,purpose:tool.purpose,inputs:tool.inputs,outputs:tool.outputs,
+    offline:tool.offline,network:tool.network,risk:tool.risk,limits:tool.limits,
+    documentation:tool.documentation,executionEnabled:false,relevanceScore:tool.relevanceScore
+  }));
   return {
-    query:result.query,totalMatches:result.total,
-    records:result.results.map((tool)=>({
-      name:tool.name,category:tool.categoryName,knowledgeStatus:tool.knowledgeStatus,
-      summary:tool.summary,purpose:tool.purpose,inputs:tool.inputs,outputs:tool.outputs,
-      offline:tool.offline,network:tool.network,risk:tool.risk,limits:tool.limits,
-      documentation:tool.documentation,executionEnabled:false
-    })),
-    note:'السجلات غير المكتملة موسومة catalogued-needs-review؛ لا تستنتج منها معلومات غير موثقة. لا توجد أداة مفعّلة للتنفيذ.'
+    totalMatches:result.total,
+    matched:records.length>0,
+    retrievalMethod:'expanded-lexical-and-intent-rules',
+    records,
+    note:records.length
+      ?'استخدم فقط السجلات المطابقة. إذا كانت الحالة catalogued-needs-review فلا توجد معلومات فنية مؤكدة عنها.'
+      :'لم يعثر فهرس الأدوات المحلي على سجل مطابق لهذا السؤال. لا تخترع اسم أداة أو خصائصها.'
   };
 }
 function listCategories() {
