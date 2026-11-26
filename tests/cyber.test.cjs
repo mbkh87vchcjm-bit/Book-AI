@@ -179,3 +179,22 @@ test('concept list can be filtered by knowledge domain', () => {
   assert.ok(Knowledge.listByDomain('cryptography').length >= 2);
   assert.ok(Knowledge.listByDomain('secure-development').length >= 2);
 });
+
+test('knowledge catalog includes source-backed OWASP Top 10 and ASVS concepts', () => {
+  const accessControl = Knowledge.resolveTerm('Broken Access Control');
+  assert.equal(accessControl.status, 'resolved');
+  assert.equal(accessControl.concept.id, 'SEC-BAC-001');
+  const accessSources = Knowledge.getReferences(accessControl.concept);
+  assert.ok(accessSources.some((source) => source.id === 'OWASP-TOP10-2025-A01' && source.version === '2025'));
+  assert.ok(accessSources.some((source) => source.id === 'OWASP-ASVS-5.0.0' && source.version === '5.0.0'));
+
+  const asvs = Knowledge.resolveTerm('OWASP ASVS');
+  assert.equal(asvs.status, 'resolved');
+  assert.equal(Knowledge.getReferences(asvs.concept)[0].version, '5.0.0');
+
+  const sca = Knowledge.resolveTerm('Software Composition Analysis');
+  assert.equal(sca.status, 'resolved');
+  assert.match(sca.concept.distinction, /ليس SCA كاملًا/);
+  assert.ok(Knowledge.listByDomain('vulnerability-management').length >= 3);
+  assert.ok(Knowledge.concepts.length >= 30);
+});
