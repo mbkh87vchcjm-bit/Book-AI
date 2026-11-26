@@ -109,6 +109,60 @@
     return exactTerm(lexicon, subject);
   }
 
+  // A deliberately narrow definition template: translate only when the subject,
+  // predicate type, verb and object are all explicitly covered by the local glossary.
+  // This avoids presenting word substitutions as a complete sentence translation.
+  var DEFINITION_TYPES = {
+    'system': 'نظام',
+    'protocol': 'بروتوكول',
+    'connection oriented protocol': 'بروتوكول موجه بالاتصال',
+    'connectionless protocol': 'بروتوكول غير موجه بالاتصال',
+    'network layer protocol': 'بروتوكول طبقة الشبكة',
+    'application layer protocol': 'بروتوكول طبقة التطبيق',
+    'database management system': 'نظام إدارة قواعد البيانات'
+  };
+
+  var DEFINITION_OBJECTS = {
+    'reliable data transmission': 'نقل البيانات الموثوق',
+    'reliable and ordered data transmission': 'نقل البيانات الموثوق والمرتب',
+    'domain names into ip addresses': 'أسماء النطاقات إلى عناوين IP',
+    'ip addresses automatically to devices': 'عناوين IP للأجهزة تلقائيًا',
+    'network traffic according to rules': 'حركة مرور الشبكة وفق قواعد محددة'
+  };
+
+  var DEFINITION_VERBS = {
+    'provides': 'يوفر',
+    'provide': 'يوفر',
+    'translates': 'يحوّل',
+    'translate': 'يحوّل',
+    'contains': 'يحتوي على',
+    'contain': 'يحتوي على',
+    'manages': 'يدير',
+    'manage': 'يدير',
+    'controls': 'يتحكم في',
+    'control': 'يتحكم في',
+    'assigns': 'يوزع',
+    'assign': 'يوزع'
+  };
+
+  function translateKnownDefinition(original, lexicon) {
+    var match = String(original || '').trim().match(/^(.+?)\\s+is\\s+(?:a|an|the)\\s+(.+?)\\s+that\\s+(provides|provide|translates|translate|contains|contain|manages|manage|controls|control|assigns|assign)\\s+(.+?)[.!?]?\\s*$/i);
+    if (!match) return null;
+    var subject = resolveSubject(lexicon, match[1]);
+    var type = DEFINITION_TYPES[normalizeEnglishPhrase(match[2])];
+    var verb = DEFINITION_VERBS[match[3].toLowerCase()];
+    var object = DEFINITION_OBJECTS[normalizeEnglishPhrase(match[4])];
+    if (!subject || !subject.term_ar || !type || !verb || !object) return null;
+    return {
+      original: original,
+      translated: subject.term_ar + ' هو ' + type + ' ' + verb + ' ' + object + '.',
+      status: 'complete',
+      confidence: 0.88,
+      structured: true,
+      translationType: 'structured-definition-rule'
+    };
+  }
+
   function translateKnownSentence(original, lexicon) {
     var match = String(original || '').trim().match(/^(.+?)\s+(provides|provide|translates|translate|contains|contain|manages|manage|controls|control|executes|execute|identifies|identify)\s+(.+?)[.!?]?\s*$/i);
     if (!match) return null;
@@ -144,6 +198,9 @@
     }
 
     var lexicon = getLexicon();
+
+    var definition = translateKnownDefinition(original, lexicon);
+    if (definition) return definition;
 
     var structured = translateKnownSentence(original, lexicon);
     if (structured) return structured;

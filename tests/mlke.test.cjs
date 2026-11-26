@@ -128,3 +128,21 @@ test('unknown English sentence is not promoted to a complete translation', () =>
   assert.ok(Array.isArray(translated.unknownWords));
   assert.ok(translated.unknownWords.length>0);
 });
+
+
+test('Arabic answer on an English definition uses a structured glossary translation and retains the source', () => {
+  const docs = [{id:'dns-en',name:'Networking English.pdf',type:'pdf',pages:[{
+    page:4,
+    text:'DNS is a system that translates domain names into IP addresses.'
+  }]}];
+  const result = Answer.answer({
+    documents:docs,
+    question:'ما وظيفة DNS؟',
+    mode:'strict'
+  });
+  assert.equal(result.origin,'source');
+  assert.match(result.text,/ترجمة معجمية تقريبية بقواعد محلية/);
+  assert.match(result.text,/نظام أسماء النطاقات هو نظام يحوّل أسماء النطاقات إلى عناوين IP/);
+  assert.match(result.text,/DNS is a system that translates domain names into IP addresses/);
+  assert.match(result.text,/الصفحة 4/);
+});
