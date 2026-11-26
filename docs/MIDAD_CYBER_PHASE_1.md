@@ -29,6 +29,7 @@ The catalogue is a starting point, not a substitute for authoritative security r
 
 - No Semgrep binary, vulnerability database, network scanner, or LLM is bundled in this phase.
 - The policy API is ready to authorize future local analyzers, but those integrations must be added and tested separately.
+- File-scope checks are lexical relative-path checks at this stage. The Windows scanner must also resolve canonical filesystem paths and reject symlink/junction escapes before reading files.
 - The initial concept set is deliberately small and educational.
 - A Windows settings UI and persistent user preferences are the next integration tasks.
 - Android remains unchanged until the Windows desktop experience is validated.
