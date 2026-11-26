@@ -51,3 +51,6 @@ The UI displays a bounded preview and JSON export retains a bounded inventory. M
 ## Windows packaging preparation
 
 A Windows CI job now installs the pinned Electron and electron-builder toolchain and builds both NSIS installer and portable x64 artifacts. Build artifacts are retained in GitHub Actions for a limited period and are not yet published as a release. The artifacts are unsigned because no trusted signing certificate has been configured. Before public distribution, complete Windows installation/uninstallation tests, clean-profile tests, antivirus false-positive review, application icon/branding, code signing, and a documented release checksum process.
+
+
+AST report metadata also records whether the parser was available, how many JavaScript / TypeScript files were parsed, and how many files had syntax parse failures. These counters do not include source snippets and are included in JSON exports.
