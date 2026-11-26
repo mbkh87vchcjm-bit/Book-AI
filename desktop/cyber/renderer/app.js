@@ -446,6 +446,7 @@
 
 
   let localModels = [];
+  let assistantTranscript = [];
 
   function addToolText(parent, label, value) {
     const wrapper = document.createElement('div');
@@ -567,84 +568,109 @@
     }
   }
 
-  async function askLocalAssistant() {
-    const question = $('assistant-question').value.trim();
-    const model = $('local-model').value;
+  function renderAssistantTranscript() {
     const answerBox = $('assistant-answer');
-    if (!question) {
-      toast('اكتب سؤالاً أولاً.');
+    answerBox.replaceChildren();
+    if (!assistantTranscript.length) {
+      const empty = document.createElement('p');
+      empty.className = 'muted';
+      empty.textContent = 'لم يتم إرسال سؤال بعد. ابدأ بسؤال طبيعي ثم تابع ضمن المحادثة نفسها.';
+      answerBox.appendChild(empty);
       return;
     }
-    if (!model || !localModels.some((item) => item.name === model)) {
-      toast('ثبّت نموذجاً محلياً وتأكد من تشغيل Ollama أولاً.');
-      return;
-    }
-    $('ask-local').disabled = true;
-    answerBox.textContent = 'يتم إرسال السؤال إلى النموذج المحلي على هذا الجهاز…';
-    try {
-      const result = await api.askLocalModel({model, question});
-      answerBox.replaceChildren();
-      if (!result.ok) {
-        const error = document.createElement('p');
-        error.className = 'muted';
-        error.textContent = result.error === 'local-runtime-unavailable'
-          ? 'خدمة النموذج المحلي غير متاحة. لم تتم محاولة الاتصال بخدمة خارجية.'
-          : 'تعذر الحصول على إجابة محلية: ' + result.error;
-        answerBox.appendChild(error);
-        return;
-      }
+    assistantTranscript.forEach((turn) => {
+      const card = document.createElement('article');
+      card.className = 'assistant-turn';
+      const questionTitle = document.createElement('strong');
+      questionTitle.textContent = 'سؤال الباحث';
+      const question = document.createElement('p');
+      question.textContent = turn.question;
       const heading = document.createElement('strong');
-      heading.textContent = 'إجابة النموذج المحلي · ' + result.model;
+      heading.textContent = 'إجابة النموذج المحلي · ' + turn.model;
       const content = document.createElement('p');
       content.className = 'assistant-response-text';
-      content.textContent = result.answer;
+      content.textContent = turn.answer;
       const notice = document.createElement('p');
       notice.className = 'muted';
-      notice.textContent = 'الإجابة مولدة محلياً وتحتاج إلى مراجعة الباحث والتحقق من المراجع. مِداد لم ينفذ أدوات أو أوامر.';
-      answerBox.append(heading, content, notice);
-
-      const evidence = result.evidence || {};
+      notice.textContent = 'إجابة مولدة محلياً؛ تحقق من المعلومات والمراجع قبل استخدامها بحثياً.';
+      card.append(questionTitle, question, heading, content, notice);
+      const evidence = turn.evidence || {};
       const retrieval = evidence.retrieval || {};
       const coverage = document.createElement('p');
       coverage.className = 'muted';
-      coverage.textContent = 'مصادر السياق المحلي: ' +
-        (Number(retrieval.matchedToolRecords) || 0) + ' سجل أدوات، و' +
-        (Number(retrieval.matchedConceptRecords) || 0) + ' مفهوم أمني.';
-      answerBox.appendChild(coverage);
-
+      coverage.textContent = 'مصادر السياق: ' + (Number(retrieval.matchedToolRecords) || 0) + ' سجل أدوات، و' +
+        (Number(retrieval.matchedConceptRecords) || 0) + ' مفهوم أمني.' +
+        (retrieval.usedConversationContext ? ' تم ربط السؤال بسياق المحادثة السابقة.' : '');
+      card.appendChild(coverage);
       const sources = document.createElement('div');
       sources.className = 'assistant-evidence';
       const sourcesTitle = document.createElement('strong');
-      sourcesTitle.textContent = 'السجلات المحلية التي أُرسلت ضمن سياق الإجابة';
+      sourcesTitle.textContent = 'الأدلة المحلية التي أُرسلت إلى النموذج';
       sources.appendChild(sourcesTitle);
       const sourceItems = Array.isArray(evidence.tools) ? evidence.tools : [];
       const conceptItems = Array.isArray(evidence.concepts) ? evidence.concepts : [];
       if (!sourceItems.length && !conceptItems.length) {
         const empty = document.createElement('p');
-        empty.textContent = 'لم يُعثر على مرجع محلي مطابق. تعامل مع الإجابة على أنها شرح عام غير مسنود بسجل أدوات داخل مِداد.';
+        empty.textContent = 'لا يوجد سجل محلي مطابق؛ قد تكون الإجابة شرحاً عاماً من النموذج وليست نتيجة بحث في قاعدة مِداد.';
         sources.appendChild(empty);
       }
       sourceItems.forEach((item) => {
         const line = document.createElement('p');
-        const reviewState = item.knowledgeStatus === 'reviewed-summary'
-          ? 'ملخص مراجع أولياً' : 'سجل غير مكتمل ويحتاج مراجعة';
-        line.textContent = 'أداة: ' + item.name + ' — ' + reviewState +
-          (item.documentation ? ' — ' + item.documentation : '');
+        const state = item.knowledgeStatus === 'reviewed-summary' ? 'ملخص أولي مراجع' : 'سجل غير مكتمل';
+        line.textContent = 'أداة: ' + item.name + ' — ' + state + (item.documentation ? ' — ' + item.documentation : '');
         sources.appendChild(line);
       });
       conceptItems.forEach((item) => {
         const line = document.createElement('p');
         const refs = Array.isArray(item.references) ? item.references : [];
-        line.textContent = 'مفهوم: ' + item.term +
-          (refs.length ? ' — ' + refs.map((ref) => ref.title + ' (' + ref.version + ')').join('؛ ') : ' — دون مرجع مسجل');
+        line.textContent = 'مفهوم: ' + item.term + (refs.length ? ' — ' + refs.map((ref) => ref.title + ' (' + ref.version + ')').join('؛ ') : ' — دون مرجع مسجل');
         sources.appendChild(line);
       });
-      answerBox.appendChild(sources);
-    } catch (_) {
-      answerBox.textContent = 'حدث خطأ أثناء الاتصال بخدمة النموذج المحلية.';
-    } finally {
-      $('ask-local').disabled = false;
+      card.appendChild(sources);
+      answerBox.appendChild(card);
+    });
+  }
+
+  async function clearAssistantConversation() {
+    try {
+      const result = await api.clearAssistantConversation();
+      if (!result.ok) { toast('تعذر مسح سياق المحادثة.'); return; }
+      assistantTranscript = [];
+      renderAssistantTranscript();
+      $('assistant-question').value = '';
+      toast('بدأت محادثة جديدة؛ مُسح السياق المؤقت.');
+    } catch (_) { toast('تعذر مسح سياق المحادثة.'); }
+  }
+
+  async function askLocalAssistant() {
+    const question = $('assistant-question').value.trim();
+    const model = $('local-model').value;
+    const answerBox = $('assistant-answer');
+    if (!question) { toast('اكتب سؤالاً أولاً.'); return; }
+    if (!model || !localModels.some((item) => item.name === model)) {
+      toast('ثبّت نموذجاً محلياً وتأكد من تشغيل Ollama أولاً.');
+      return;
     }
+    $('ask-local').disabled = true;
+    const loading = document.createElement('p');
+    loading.className = 'muted';
+    loading.textContent = 'يتم إرسال السؤال إلى النموذج المحلي وربطه بسياق المحادثة عند الحاجة…';
+    answerBox.appendChild(loading);
+    try {
+      const result = await api.askLocalModel({model, question});
+      if (!result.ok) {
+        loading.textContent = result.error === 'local-runtime-unavailable'
+          ? 'خدمة النموذج المحلي غير متاحة. لم تتم محاولة الاتصال بخدمة خارجية.'
+          : 'تعذر الحصول على إجابة محلية: ' + result.error;
+        return;
+      }
+      assistantTranscript.push({question, answer: result.answer, model: result.model, evidence: result.evidence || {}});
+      assistantTranscript = assistantTranscript.slice(-2);
+      renderAssistantTranscript();
+      $('assistant-question').value = '';
+    } catch (_) {
+      loading.textContent = 'حدث خطأ أثناء الاتصال بخدمة النموذج المحلية.';
+    } finally { $('ask-local').disabled = false; }
   }
 
   async function initialize() {
@@ -664,6 +690,7 @@
     $('tools-category').addEventListener('change', searchTools);
     $('refresh-models').addEventListener('click', loadLocalModels);
     $('ask-local').addEventListener('click', askLocalAssistant);
+    $('clear-assistant').addEventListener('click', clearAssistantConversation);
     $('compare-concepts').addEventListener('click', compareConcepts);
     $('nav-settings').addEventListener('click', () => showPage('settings'));
     $('open-settings').addEventListener('click', () => showPage('settings'));

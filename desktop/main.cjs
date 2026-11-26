@@ -9,6 +9,7 @@ const Sbom = require('./cyber/core/sbom-export.cjs');
 const ToolRegistry = require('./cyber/core/tool-registry.cjs');
 const AssistantContext = require('./cyber/core/assistant-context.cjs');
 const LocalAI = require('./cyber/core/local-ai.cjs');
+const ConversationMemory = require('./cyber/core/conversation-memory.cjs');
 const localAiClient = LocalAI.createLocalAiClient();
 
 let mainWindow = null;
@@ -16,6 +17,8 @@ let selectedProjectRoot = null;
 let lastScanReport = null;
 let scanRevision = 0;
 let lastAssistantRequestAt = 0;
+let assistantConversation = [];
+let assistantConversationRevision = 0;
 
 function isTrustedRenderer(event) {
   return Boolean(mainWindow && event && event.sender === mainWindow.webContents &&
@@ -24,7 +27,7 @@ function isTrustedRenderer(event) {
 }
 
 function buildAssistantContext(question) {
-  return AssistantContext.buildAssistantContext(question);
+  return AssistantContext.buildAssistantContext(question, {toolLimit: 5, conceptLimit: 6});
 }
 
 function policyFilePath() {
@@ -79,7 +82,7 @@ function createWindow() {
   mainWindow.webContents.on('will-navigate', (event) => event.preventDefault());
   mainWindow.webContents.on('will-attach-webview', (event) => event.preventDefault());
   mainWindow.loadFile(path.join(__dirname, 'cyber', 'renderer', 'index.html'));
-  mainWindow.on('closed', () => { mainWindow = null; });
+  mainWindow.on('closed', () => { mainWindow = null; assistantConversation = []; assistantConversationRevision += 1; });
 }
 
 
@@ -116,9 +119,18 @@ ipcMain.handle('cyber:ask-local-model', async (event, input) => {
   const question = String(input && input.question || '').trim();
   const model = String(input && input.model || '').trim();
   if (!question || question.length > 4000) return {ok: false, error: 'question-invalid'};
-  const contextObject = buildAssistantContext(question);
-  const result = await localAiClient.ask({model, question, context: JSON.stringify(contextObject)});
+
+  const conversationRevision = assistantConversationRevision;
+  const history = ConversationMemory.cleanMessages(assistantConversation);
+  const retrievalInput = ConversationMemory.buildRetrievalInput(question, history);
+  const contextObject = buildAssistantContext(retrievalInput.query);
+  contextObject.retrieval.usedConversationContext = retrievalInput.usedHistory;
+  const result = await localAiClient.ask({model, question, context: JSON.stringify(contextObject), history});
+  if (conversationRevision !== assistantConversationRevision) {
+    return {ok: false, error: 'conversation-reset-during-request'};
+  }
   if (result.ok) {
+    assistantConversation = ConversationMemory.appendTurn(history, question, result.answer);
     result.evidence = {
       retrieval: contextObject.retrieval,
       tools: contextObject.toolCatalogue.records.map((tool) => ({
@@ -131,6 +143,13 @@ ipcMain.handle('cyber:ask-local-model', async (event, input) => {
     };
   }
   return result;
+});
+
+ipcMain.handle('cyber:clear-assistant-conversation', async (event) => {
+  if (!isTrustedRenderer(event)) return {ok: false, error: 'untrusted-renderer'};
+  assistantConversation = [];
+  assistantConversationRevision += 1;
+  return {ok: true, cleared: true};
 });
 
 ipcMain.handle('cyber:choose-project', async () => {
@@ -282,5 +301,7 @@ app.whenReady().then(() => {
 });
 
 app.on('window-all-closed', () => {
+  assistantConversation = [];
+  assistantConversationRevision += 1;
   if (process.platform !== 'darwin') app.quit();
 });

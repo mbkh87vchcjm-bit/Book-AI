@@ -28,6 +28,7 @@ test('Windows Electron package is pinned and has a start command', () => {
   assert.ok(packageJson.scripts['test:cyber'].includes('tool-registry.test.cjs'));
   assert.ok(packageJson.scripts['test:cyber'].includes('local-ai.test.cjs'));
   assert.ok(packageJson.scripts['test:cyber'].includes('assistant-context.test.cjs'));
+  assert.ok(packageJson.scripts['test:cyber'].includes('conversation-memory.test.cjs'));
 });
 
 test('Electron main process enforces renderer isolation and sandboxing', () => {
@@ -49,6 +50,9 @@ test('Electron main process enforces renderer isolation and sandboxing', () => {
   assert.match(main, /selectedProjectRoot !== scanRoot/);
   assert.match(main, /scan-context-changed/);
   assert.match(main, /scanRevision \+= 1/);
+  assert.match(main, /cyber:clear-assistant-conversation/);
+  assert.match(main, /ConversationMemory\.buildRetrievalInput/);
+  assert.match(main, /assistantConversationRevision/);
 });
 
 test('renderer CSP blocks network connections, frames and plugin objects', () => {
@@ -57,6 +61,7 @@ test('renderer CSP blocks network connections, frames and plugin objects', () =>
   assert.match(html, /id="glossary-page"/);
   assert.match(html, /id="concept-term"/);
   assert.match(html, /id="export-sbom"/);
+  assert.match(html, /id="clear-assistant"/);
   assert.match(html, /frame-src 'none'/);
   assert.match(html, /object-src 'none'/);
   assert.match(html, /script-src 'self'/);
@@ -71,6 +76,7 @@ test('preload exposes only explicit cyber operations', () => {
   assert.match(preload, /scanProject/);
   assert.match(preload, /exportReport/);
   assert.match(preload, /exportSbom/);
+  assert.match(preload, /clearAssistantConversation/);
   assert.match(preload, /exportReport: \(\) => ipcRenderer\.invoke/);
   assert.match(preload, /exportSbom: \(\) => ipcRenderer\.invoke/);
   assert.doesNotMatch(preload, /export(?:Report|Sbom): \(report\)/);
@@ -84,6 +90,8 @@ test('renderer has no direct Node, network, or shell capability', () => {
   assert.match(renderer, /async function exportSbom/);
   assert.match(renderer, /api\.exportReport\(\)/);
   assert.match(renderer, /api\.exportSbom\(\)/);
+  assert.match(renderer, /api\.clearAssistantConversation\(\)/);
+  assert.match(renderer, /renderAssistantTranscript/);
   assert.match(renderer, /تغيرت السياسات؛ نفّذ فحصاً جديداً/);
   assert.match(renderer, /MidadCyberKnowledge\.resolveTerm|MidadCyberKnowledge/);
   assert.doesNotMatch(renderer, /\brequire\s*\(/);

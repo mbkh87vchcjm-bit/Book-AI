@@ -113,8 +113,9 @@
           </div>
           <div class="notice">يجب تثبيت Ollama والنموذج مسبقاً. يتصل مِداد حصراً بـ 127.0.0.1:11434، ولا يقوم بتنزيل النماذج أو الاتصال بخدمات سحابية.</div>
           <label class="field">سؤال البحث<textarea id="assistant-question" rows="4" maxlength="4000" placeholder="اسأل عن وظيفة أداة، الفروق بين الأدوات، حدودها، متطلبات تشغيلها محلياً، أو تفسير نتيجة دفاعية محفوظة."></textarea></label>
-          <div class="form-actions"><button class="button primary" type="button" id="ask-local">إرسال إلى النموذج المحلي</button></div>
-          <div id="assistant-answer" class="assistant-answer" aria-live="polite"><p class="muted">لم يتم إرسال سؤال بعد. لا تحفظ هذه الصفحة سجل المحادثة.</p></div>
+          <div class="form-actions"><button class="button primary" type="button" id="ask-local">إرسال إلى النموذج المحلي</button><button class="button ghost" type="button" id="clear-assistant">بدء محادثة جديدة</button></div>
+          <div class="notice">يحفظ مِداد مؤقتاً آخر رسالتين متبادلتين في ذاكرة البرنامج لربط أسئلة المتابعة. لا تُحفظ المحادثة على القرص، وتُمسح عند إغلاق البرنامج أو اختيار «بدء محادثة جديدة».</div>
+          <div id="assistant-answer" class="assistant-answer" aria-live="polite"><p class="muted">لم يتم إرسال سؤال بعد. ابدأ بسؤال طبيعي، ثم تابع بأسئلة مثل «اشرحها أكثر» أو «ما الفرق بينهما؟».</p></div>
         </section>
       </section>
 

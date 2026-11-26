@@ -12,5 +12,6 @@ contextBridge.exposeInMainWorld('midadCyber', Object.freeze({
   listToolCategories: () => ipcRenderer.invoke('cyber:list-tool-categories'),
   searchTools: (query) => ipcRenderer.invoke('cyber:search-tools', query),
   listLocalModels: () => ipcRenderer.invoke('cyber:list-local-models'),
-  askLocalModel: (input) => ipcRenderer.invoke('cyber:ask-local-model', input)
+  askLocalModel: (input) => ipcRenderer.invoke('cyber:ask-local-model', input),
+  clearAssistantConversation: () => ipcRenderer.invoke('cyber:clear-assistant-conversation')
 }));
