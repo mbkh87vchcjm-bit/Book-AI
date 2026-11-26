@@ -8,7 +8,7 @@ test('default cyber policy is local, read-only, and safe by default', () => {
   const policy = Policy.createPolicy();
   assert.equal(policy.enabled, true);
   assert.equal(policy.mode, 'read-only');
-  assert.deepEqual(policy.analyzers, ['builtin']);
+  assert.deepEqual(policy.analyzers, ['builtin', 'ast']);
   assert.equal(policy.capabilities.staticAnalysis, true);
   assert.equal(policy.capabilities.applyRemediations, false);
   assert.equal(policy.capabilities.networkAccess, false);
@@ -21,7 +21,7 @@ test('default cyber policy is local, read-only, and safe by default', () => {
 test('user can configure defensive analysis scope, analyzers, limits, and severity', () => {
   const policy = Policy.createPolicy({
     mode: 'review', scope: {allowedPaths: ['src', 'tests'], excludedPaths: ['src/generated']},
-    analyzers: ['builtin', 'semgrep', 'dependency-audit'], severityThreshold: 'high',
+    analyzers: ['builtin', 'ast', 'semgrep', 'dependency-audit'], severityThreshold: 'high',
     limits: {maxFiles: 100, maxFileBytes: 500000, maxTotalBytes: 5000000, maxFindings: 50, timeoutMs: 30000},
     capabilities: {remediationSuggestions: true, applyRemediations: true}
   });
@@ -30,7 +30,7 @@ test('user can configure defensive analysis scope, analyzers, limits, and severi
   assert.deepEqual(policy.scope.allowedPaths, ['src', 'tests']);
   assert.equal(policy.limits.maxFiles, 100);
   assert.equal(policy.severityThreshold, 'high');
-  assert.deepEqual(policy.analyzers, ['builtin', 'semgrep', 'dependency-audit']);
+  assert.deepEqual(policy.analyzers, ['builtin', 'ast', 'semgrep', 'dependency-audit']);
 });
 
 test('platform guardrails cannot be enabled through user preferences', () => {
