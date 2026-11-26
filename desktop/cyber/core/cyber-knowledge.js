@@ -18,13 +18,13 @@
       definition:'التحقق من أن المستخدم أو الكيان هو فعلاً من يدّعي أنه هو.',
       distinction:'تجيب عن سؤال: من أنت؟ ولا تحدد وحدها ما الذي يسمح لك بفعله.',
       example:'تسجيل الدخول باستخدام كلمة مرور مع عامل تحقق إضافي.',
-      contrastsWith:['SEC-AUTHZ-001'],related:['SEC-MFA-001']},
+      contrastsWith:['SEC-AUTHZ-001'],related:['SEC-MFA-001'],sources:['OWASP-ASVS-5.0.0','OWASP-TOP10-2025-A07']},
     {id:'SEC-AUTHZ-001',term:'Authorization',ar:'التفويض وتحديد الصلاحيات',domain:'identity-security',
       aliases:['authz','access control','الصلاحيات','التحكم بالوصول'],
       definition:'تحديد الموارد والعمليات التي يُسمح لهوية موثقة بالوصول إليها.',
       distinction:'تجيب عن سؤال: ما الذي يسمح لك بفعله؟ وهي مختلفة عن إثبات الهوية.',
       example:'السماح لمستخدم بقراءة سجل ومنع مستخدم آخر من تعديله.',
-      contrastsWith:['SEC-AUTHN-001'],related:['SEC-RBAC-001']},
+      contrastsWith:['SEC-AUTHN-001'],related:['SEC-RBAC-001'],sources:['OWASP-ASVS-5.0.0','OWASP-TOP10-2025-A01']},
     {id:'SEC-ENCRYPT-001',term:'Encryption',ar:'التشفير',domain:'cryptography',
       aliases:['encrypt','التشفير بالمفتاح','cipher'],
       definition:'تحويل بيانات مقروءة إلى صيغة غير مقروءة دون المفتاح المناسب، بهدف حماية السرية.',
@@ -78,7 +78,7 @@
       definition:'فئة من الثغرات تنشأ عندما تؤثر مدخلات غير موثوقة في بنية استعلام SQL بدلاً من التعامل معها كقيم بيانات.',
       distinction:'مفهوم أمني يصف نمط ضعف في بناء الاستعلامات، وليس نمط تصميم Dependency Injection.',
       example:'مراجعة مصدر الاستعلام والتأكد من استخدام parameterized queries.',
-      contrastsWith:['SEC-DI-001'],related:['SEC-INPUT-001']},
+      contrastsWith:['SEC-DI-001'],related:['SEC-INPUT-001'],sources:['OWASP-ASVS-5.0.0','OWASP-SQL-INJECTION-CHEATSHEET']},
     {id:'SEC-DI-001',term:'Dependency Injection',ar:'حقن الاعتماديات',domain:'software-design',
       aliases:['di','dependency injection pattern','حقن التبعيات'],
       definition:'نمط تصميم تُمرر فيه الاعتماديات إلى مكوّن بدلاً من أن ينشئها داخلياً بنفسه.',
@@ -227,7 +227,9 @@
   var SOURCES = {
     'OWASP-TOP10-2025': {title:'OWASP Top 10',version:'2025',url:'https://top10.owasp.org/2025/'},
     'OWASP-ASVS-5.0.0': {title:'OWASP Application Security Verification Standard',version:'5.0.0',url:'https://asvs.owasp.org/'},
-    'OWASP-CHEATSHEETS': {title:'OWASP Cheat Sheet Series',version:'online edition',url:'https://cheatsheetseries.owasp.org/'}
+    'OWASP-CHEATSHEETS': {title:'OWASP Cheat Sheet Series',version:'online edition',url:'https://cheatsheetseries.owasp.org/'},
+    'OWASP-SQL-INJECTION-CHEATSHEET': {title:'SQL Injection Prevention Cheat Sheet',version:'online edition',url:'https://cheatsheetseries.owasp.org/cheatsheets/SQL_Injection_Prevention_Cheat_Sheet.html'},
+    'OWASP-XSS-CHEATSHEET': {title:'Cross Site Scripting Prevention Cheat Sheet',version:'online edition',url:'https://cheatsheetseries.owasp.org/cheatsheets/Cross_Site_Scripting_Prevention_Cheat_Sheet.html'}
   };
 
   function contextTokens(context) {
