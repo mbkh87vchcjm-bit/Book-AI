@@ -125,7 +125,10 @@ ipcMain.handle('cyber:ask-local-model', async (event, input) => {
   const retrievalInput = ConversationMemory.buildRetrievalInput(question, history);
   const contextObject = buildAssistantContext(retrievalInput.query);
   contextObject.retrieval.usedConversationContext = retrievalInput.usedHistory;
-  const result = await localAiClient.ask({model, question, context: JSON.stringify(contextObject), history});
+  const result = await localAiClient.ask({
+    model, question, context: JSON.stringify(contextObject),
+    history: retrievalInput.usedHistory ? history : []
+  });
   if (conversationRevision !== assistantConversationRevision) {
     return {ok: false, error: 'conversation-reset-during-request'};
   }

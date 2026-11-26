@@ -53,6 +53,7 @@ test('Electron main process enforces renderer isolation and sandboxing', () => {
   assert.match(main, /cyber:clear-assistant-conversation/);
   assert.match(main, /ConversationMemory\.buildRetrievalInput/);
   assert.match(main, /assistantConversationRevision/);
+  assert.match(main, /history: retrievalInput\.usedHistory \? history : \[\]/);
 });
 
 test('renderer CSP blocks network connections, frames and plugin objects', () => {
