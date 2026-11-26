@@ -88,6 +88,16 @@ jobs:
         working-directory: desktop
         run: npm run dist:win
 
+      - name: Generate SHA-256 checksums
+        working-directory: desktop
+        shell: pwsh
+        run: |
+          $files = Get-ChildItem .\\release\\*.exe
+          if ($files.Count -ne 2) { throw \"Expected installer and portable EXE; found $($files.Count)\" }
+          $lines = $files | Get-FileHash -Algorithm SHA256 | ForEach-Object { \"$($_.Hash)  $([System.IO.Path]::GetFileName($_.Path))\" }
+          $lines | Set-Content .\\release\\SHA256SUMS.txt -Encoding ascii
+          Get-Content .\\release\\SHA256SUMS.txt
+
       - name: Upload Windows artifacts
         uses: actions/upload-artifact@v4
         with:
@@ -95,5 +105,6 @@ jobs:
           path: |
             desktop/release/Midad-Cyber-Setup-*-x64.exe
             desktop/release/Midad-Cyber-Portable-*-x64.exe
+            desktop/release/SHA256SUMS.txt
           if-no-files-found: error
           retention-days: 14
