@@ -4,6 +4,10 @@ const crypto = require('node:crypto');
 
 const MAX_COMPONENTS = 10000;
 const MAX_TEXT = 240;
+const LOCKFILES = new Set([
+  'package-lock.json', 'npm-shrinkwrap.json', 'yarn.lock', 'pnpm-lock.yaml',
+  'poetry.lock', 'composer.lock', 'cargo.lock', 'gemfile.lock'
+]);
 
 function boundedText(value, limit = MAX_TEXT) {
   return String(value === undefined || value === null ? '' : value)
@@ -16,11 +20,26 @@ function isExactVersion(value) {
   return /^v?\d+\.\d+(?:\.\d+)?(?:[-+][0-9A-Za-z.-]+)?$/.test(String(value || ''));
 }
 
-function componentScope(relationship) {
+function isLockfile(manifest) {
+  const base = String(manifest || '').split(/[\\/]/).pop().toLowerCase();
+  return LOCKFILES.has(base);
+}
+
+function knownScope(relationship) {
   const value = String(relationship || '').toLowerCase();
-  if (value.includes('development') || value.includes('test')) return 'excluded';
-  if (value.includes('optional')) return 'optional';
-  if (['direct-runtime', 'direct-or-top-level-lock', 'transitive', 'direct-or-declared', 'locked-runtime'].includes(value)) return 'required';
+  if (['direct-runtime', 'direct-peer', 'locked-runtime'].includes(value)) return 'required';
+  if (['direct-development', 'development-or-test', 'locked-development', 'locked-development-optional'].includes(value)) return 'excluded';
+  if (['direct-optional', 'locked-optional'].includes(value)) return 'optional';
+  return null;
+}
+
+function mergeScope(relationships) {
+  const scopes = relationships.map(knownScope).filter(Boolean);
+  // Runtime use takes precedence when the same component is declared in more
+  // than one group; otherwise preserve dev-only or optional-only evidence.
+  if (scopes.includes('required')) return 'required';
+  if (scopes.includes('excluded')) return 'excluded';
+  if (scopes.includes('optional')) return 'optional';
   return null;
 }
 
@@ -29,10 +48,18 @@ function componentRef(pkg, index) {
     index,
     pkg.name,
     pkg.version,
-    pkg.relationship,
-    pkg.manifest
+    (pkg.relationships || []).join(','),
+    (pkg.manifests || []).join(',')
   ].map((value) => String(value || '')).join('\0');
   return 'midad-component-' + crypto.createHash('sha256').update(canonical).digest('hex').slice(0, 24);
+}
+
+function addProperty(properties, name, value) {
+  const clean = boundedText(value, 500);
+  if (!clean) return;
+  if (!properties.some((item) => item.name === name && item.value === clean)) {
+    properties.push({name, value: clean});
+  }
 }
 
 function createCycloneDxSbom(report, options = {}) {
@@ -53,37 +80,87 @@ function createCycloneDxSbom(report, options = {}) {
     throw new TypeError('The serial number must be a UUID URN.');
   }
 
-  const packages = rawPackages.slice(0, MAX_COMPONENTS);
-  const components = [];
-  const seen = new Set();
-  packages.forEach((raw, index) => {
-    const name = boundedText(raw && raw.name);
-    if (!name) return;
-    const version = boundedText(raw && raw.version, 120) || 'unspecified';
-    const relationship = boundedText(raw && raw.relationship, 48) || 'unknown';
-    const manifest = boundedText(raw && raw.manifest, 240);
-    const identity = [name.toLowerCase(), version, relationship, manifest].join('\0');
-    if (seen.has(identity)) return;
-    seen.add(identity);
+  const normalized = rawPackages.slice(0, MAX_COMPONENTS).map((raw) => ({
+    name: boundedText(raw && raw.name),
+    version: boundedText(raw && raw.version, 120) || 'unspecified',
+    relationship: boundedText(raw && raw.relationship, 48) || 'unknown',
+    manifest: boundedText(raw && raw.manifest, 240)
+  })).filter((item) => item.name);
 
-    const properties = [
-      {name: 'midad:relationship', value: relationship}
-    ];
-    if (manifest) properties.push({name: 'midad:source-manifest', value: manifest});
-    if (version !== 'unspecified' && !isExactVersion(version)) {
-      properties.push({name: 'midad:declared-version-constraint', value: version});
+  const lockGroups = new Map();
+  const declarations = [];
+  for (const item of normalized) {
+    if (isLockfile(item.manifest) && isExactVersion(item.version)) {
+      const key = item.name.toLowerCase() + '\0' + item.version;
+      let group = lockGroups.get(key);
+      if (!group) {
+        group = {
+          name: item.name,
+          version: item.version,
+          relationships: [],
+          manifests: [],
+          constraints: []
+        };
+        lockGroups.set(key, group);
+      }
+      if (!group.relationships.includes(item.relationship)) group.relationships.push(item.relationship);
+      if (item.manifest && !group.manifests.includes(item.manifest)) group.manifests.push(item.manifest);
+    } else {
+      declarations.push(item);
+    }
+  }
+
+  const remaining = [];
+  for (const declaration of declarations) {
+    const matches = Array.from(lockGroups.values()).filter((group) =>
+      group.name.toLowerCase() === declaration.name.toLowerCase()
+    );
+    if (matches.length) {
+      for (const group of matches) {
+        if (!group.relationships.includes(declaration.relationship)) group.relationships.push(declaration.relationship);
+        if (declaration.manifest && !group.manifests.includes(declaration.manifest)) group.manifests.push(declaration.manifest);
+        if (declaration.version !== 'unspecified' &&
+            !group.constraints.includes(declaration.version)) group.constraints.push(declaration.version);
+      }
+    } else {
+      remaining.push({
+        name: declaration.name,
+        version: null,
+        relationships: [declaration.relationship],
+        manifests: declaration.manifest ? [declaration.manifest] : [],
+        constraints: declaration.version === 'unspecified' ? [] : [declaration.version]
+      });
+    }
+  }
+
+  const componentGroups = Array.from(lockGroups.values()).concat(remaining).slice(0, MAX_COMPONENTS);
+  const components = componentGroups.map((group, index) => {
+    const relationships = group.relationships.length ? group.relationships : ['unknown'];
+    const manifests = group.manifests.slice().sort();
+    const properties = [];
+    relationships.forEach((relationship) => addProperty(properties, 'midad:relationship', relationship));
+    manifests.forEach((manifest) => addProperty(properties, 'midad:source-manifest', manifest));
+    group.constraints.forEach((constraint) => addProperty(properties, 'midad:declared-version-constraint', constraint));
+    if (!isLockfile(manifests[0]) && group.version === null) {
+      addProperty(properties, 'midad:version-source', 'manifest-declaration-not-lockfile-resolved');
     }
 
     const component = {
       type: 'library',
-      'bom-ref': componentRef({name, version, relationship, manifest}, index),
-      name,
+      'bom-ref': componentRef({
+        name: group.name,
+        version: group.version || group.constraints.join(','),
+        relationships,
+        manifests
+      }, index),
+      name: group.name,
       properties
     };
-    const scope = componentScope(relationship);
+    if (group.version && isExactVersion(group.version) &&
+        manifests.some(isLockfile)) component.version = group.version;
+    const scope = mergeScope(relationships);
     if (scope) component.scope = scope;
-    if (isExactVersion(version)) component.version = version;
-    components.push(component);
+    return component;
   });
 
   if (!components.length) throw new TypeError('No valid package names were available for the SBOM.');
@@ -110,8 +187,8 @@ function createCycloneDxSbom(report, options = {}) {
       properties: [
         {name: 'midad:completeness', value: 'partial-manifest-inventory'},
         {name: 'midad:network-access', value: 'none'},
-        {name: 'midad:dependency-relationships', value: 'not-resolved'},
-        {name: 'midad:package-entry-count', value: String(inventory.packageCount || components.length)},
+        {name: 'midad:dependency-relationships', value: 'not-fully-resolved'},
+        {name: 'midad:inventory-entry-count', value: String(inventory.packageCount || normalized.length)},
         {name: 'midad:manifest-count', value: String(inventory.manifestsScanned || 0)}
       ]
     },
@@ -122,6 +199,8 @@ function createCycloneDxSbom(report, options = {}) {
 module.exports = {
   createCycloneDxSbom,
   isExactVersion,
-  componentScope,
+  isLockfile,
+  knownScope,
+  mergeScope,
   MAX_COMPONENTS
 };
