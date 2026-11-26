@@ -87,6 +87,7 @@ function createCycloneDxSbom(report, options = {}) {
   if (!components.length) throw new TypeError('No valid package names were available for the SBOM.');
 
   return {
+    $schema: 'http://cyclonedx.org/schema/bom-1.7.schema.json',
     bomFormat: 'CycloneDX',
     specVersion: '1.7',
     serialNumber: serial,
@@ -103,10 +104,7 @@ function createCycloneDxSbom(report, options = {}) {
         type: 'application',
         name: projectName
       },
-      lifecycles: [{
-        phase: 'pre-build',
-        name: 'Local dependency manifest inventory'
-      }],
+      lifecycles: [{phase: 'pre-build'}],
       properties: [
         {name: 'midad:completeness', value: 'partial-manifest-inventory'},
         {name: 'midad:network-access', value: 'none'},
