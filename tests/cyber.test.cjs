@@ -18,6 +18,34 @@ test('default cyber policy is local, read-only, and safe by default', () => {
   assert.equal(Policy.validatePolicy(policy).valid, true);
 });
 
+test('policy hard ceilings reject unsafe resource limits and oversized scopes', () => {
+  const oversizedLimit = Policy.createPolicy({
+    limits: {maxFileBytes: Policy.HARD_LIMITS.maxFileBytes + 1}
+  });
+  assert.equal(Policy.validatePolicy(oversizedLimit).valid, false);
+  assert.ok(Policy.validatePolicy(oversizedLimit).errors.includes('limits-invalid'));
+
+  const excessiveScope = Policy.createPolicy({
+    scope: {allowedPaths: Array.from({length: Policy.MAX_SCOPE_PATHS + 2}, (_, i) => 'src/' + i)}
+  });
+  assert.equal(Policy.validatePolicy(excessiveScope).valid, false);
+  assert.ok(Policy.validatePolicy(excessiveScope).errors.includes('scope-path-count-exceeded'));
+  assert.equal(Policy.normalizeRelativePath('a'.repeat(Policy.MAX_PATH_LENGTH + 1)), null);
+});
+
+test('policy validation fails safely on malformed scope arrays', () => {
+  const malformed = Policy.createPolicy();
+  malformed.scope.excludedPaths = null;
+  assert.doesNotThrow(() => Policy.validatePolicy(malformed));
+  assert.equal(Policy.validatePolicy(malformed).valid, false);
+});
+
+test('default policy objects are immutable', () => {
+  assert.equal(Object.isFrozen(Policy.DEFAULTS), true);
+  assert.equal(Object.isFrozen(Policy.DEFAULTS.limits), true);
+  assert.throws(() => { Policy.DEFAULTS.limits.maxFiles = 1; }, TypeError);
+});
+
 test('user can configure defensive analysis scope, analyzers, limits, and severity', () => {
   const policy = Policy.createPolicy({
     mode: 'review', scope: {allowedPaths: ['src', 'tests'], excludedPaths: ['src/generated']},
