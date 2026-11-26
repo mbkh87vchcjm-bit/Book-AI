@@ -114,6 +114,7 @@ obj</textarea></label>
           <section class="settings-card">
             <div class="settings-title"><div><h3>المحللات الدفاعية</h3><p>حدد المحللات المتاحة في هذه النسخة.</p></div></div>
             <label class="check-row"><span><strong>المحلل الأساسي</strong><small>مؤشرات eval وSQL النصي وinnerHTML.</small></span><input id="analyzer-builtin" type="checkbox" checked></label>
+            <label class="check-row"><span><strong>التحليل البنيوي JavaScript / TypeScript</strong><small>يفهم البنية النحوية ويقلل الالتقاط الخاطئ داخل التعليقات والنصوص.</small></span><input id="analyzer-ast" type="checkbox" checked></label>
             <label class="check-row"><span><strong>أنماط الأسرار</strong><small>البحث المحلي عن قيم اعتماد مكتوبة داخل الملفات، دون إظهار القيمة.</small></span><input id="analyzer-secrets" type="checkbox"></label>
             <label class="check-row disabled-row"><span><strong>Semgrep</strong><small>غير مربوط بعد — سيضاف بعد تثبيت واعتماد المحرك.</small></span><input type="checkbox" disabled></label>
             <label class="check-row"><span><strong>جرد الاعتماديات</strong><small>يقرأ ملفات الحزم المحلية ويستخرج الأسماء والإصدارات دون اتصال أو إثبات للثغرات.</small></span><input id="analyzer-dependencies" type="checkbox"></label>
