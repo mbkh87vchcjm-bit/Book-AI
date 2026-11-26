@@ -613,6 +613,7 @@
             } catch (_) { /* Text extraction remains usable if image-operator inspection is unavailable. */ }
           }
           var pageData = {page: i, text: pageText, extractionMethod: pageText.trim() ? 'text-layer' : 'empty'};
+          if (imagePage && pageText.trim()) pageData.textLayerText = pageText;
           if (pageText.trim()) textLayerPages++;
           if (imagePage) {
             imagePages++; pageData.ocr = true;

@@ -47,3 +47,20 @@ test('source coverage reports incomplete extraction and page quality without con
   assert.equal(summary.indexedCoverage,0.6);
   assert.ok(summary.totalCharacters > 0);
 });
+
+
+test('weak OCR keeps the original PDF text layer as a safe fallback', () => {
+  const page = {
+    text: 'DNS names domains to IP □ addresses.\nNoisy OCR words.',
+    textLayerText: 'DNS translates domain names into IP addresses.',
+    ocr: true,
+    extractionMethod: 'text-layer+ocr',
+    ocrStats: {recognitionRate:0.31}
+  };
+  assert.equal(Quality.isLowConfidenceOcrPage(page),true);
+  assert.equal(Quality.searchableText(page),'DNS translates domain names into IP addresses.');
+  assert.equal(Quality.isUsablePage(page),true);
+  const noLayer = {...page,textLayerText:''};
+  assert.equal(Quality.searchableText(noLayer),'');
+  assert.equal(Quality.isUsablePage(noLayer),false);
+});

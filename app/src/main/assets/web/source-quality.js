@@ -38,14 +38,18 @@
     return Number(stats.recognitionRate) < LOW_OCR_ACCEPTANCE_RATE;
   }
 
+  function searchableText(page) {
+    if (!page) return '';
+    if (isLowConfidenceOcrPage(page)) return String(page.textLayerText || '').trim();
+    return String(page.text || '').trim();
+  }
+
   function containsUncertainOcrMarker(text) {
     return /□/.test(String(text || ''));
   }
 
   function isUsablePage(page) {
-    if (!page || !String(page.text || '').trim()) return false;
-    if (isLowConfidenceOcrPage(page)) return false;
-    return true;
+    return !!searchableText(page);
   }
 
   function summarizeDocuments(documents) {
@@ -71,12 +75,13 @@
       let countedSkippedPages = 0;
       pages.forEach((page) => {
         result.storedPages++;
-        const text = String(page && page.text || '');
+        const rawText = String(page && page.text || '');
+        const text = searchableText(page);
         result.totalCharacters += text.length;
-        if (text.trim()) {
+        if (rawText.trim()) {
           if ((page.extractionMethod && String(page.extractionMethod).indexOf('text-layer') === 0) ||
               (!page.ocr && page.extractionMethod !== 'image-ocr')) result.textLayerPages++;
-        } else {
+        } else if (!rawText.trim()) {
           result.emptyPages++;
         }
         if (page && page.ocr) result.ocrPages++;
@@ -100,6 +105,7 @@
     normalizeLine,
     mergeTextLayers,
     isLowConfidenceOcrPage,
+    searchableText,
     containsUncertainOcrMarker,
     isUsablePage,
     summarizeDocuments

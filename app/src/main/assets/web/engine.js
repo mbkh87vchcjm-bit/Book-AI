@@ -203,7 +203,7 @@
     var out = [];
     (doc.pages || []).forEach(function (page) {
       if (SourceQuality && !SourceQuality.isUsablePage(page)) return;
-      var source = String(page.text || '');
+      var source = SourceQuality ? SourceQuality.searchableText(page) : String(page.text || '');
       if (!source.trim()) return;
       var units = [], lines = source.split(/\n/), offset = 0, paragraphStart = -1, paragraphEnd = -1;
       function pushParagraph() {

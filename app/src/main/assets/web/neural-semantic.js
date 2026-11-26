@@ -216,9 +216,10 @@
     var corpusPages = [];
     (Array.isArray(documents) ? documents : []).forEach(function (doc) {
       (doc && Array.isArray(doc.pages) ? doc.pages : []).forEach(function (page) {
-        if (!page || !String(page.text || '').trim()) return;
-        if (SourceQuality && !SourceQuality.isUsablePage(page)) return;
-        corpusPages.push({docId: String(doc.id || ''), docName: String(doc.name || ''), page: Number(page.page) || 0, text: String(page.text || '')});
+        if (!page || (SourceQuality && !SourceQuality.isUsablePage(page))) return;
+        var sourceText = SourceQuality ? SourceQuality.searchableText(page) : String(page.text || '');
+        if (!sourceText.trim()) return;
+        corpusPages.push({docId: String(doc.id || ''), docName: String(doc.name || ''), page: Number(page.page) || 0, text: sourceText});
       });
     });
     if (!corpusPages.length) return null;

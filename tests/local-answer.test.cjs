@@ -257,3 +257,19 @@ test('answers use reliable pages and disclose low-acceptance OCR pages excluded 
   assert.ok(!result.references.some(ref=>ref.page===2));
   assert.match(result.text,/استُبعدت 1 صفحة OCR منخفضة/);
 });
+
+
+test('mixed PDF pages with weak OCR answer from their native text layer, not OCR noise', () => {
+  const docs = [{id:'mixed',name:'Mixed.pdf',type:'pdf',totalPages:1,pages:[{
+    page:1,
+    text:'DNS translates domain names into IP addresses. DNS names domains to IP □.',
+    textLayerText:'DNS translates domain names into IP addresses.',
+    extractionMethod:'text-layer+ocr',
+    ocr:true,
+    ocrStats:{recognitionRate:0.2}
+  }]}];
+  const result=A.answer({documents:docs,question:'ما وظيفة DNS؟',mode:'strict',maxSentences:8});
+  assert.equal(result.origin,'source');
+  assert.match(result.text,/DNS translates domain names into IP addresses/);
+  assert.doesNotMatch(result.text,/DNS names domains to IP/);
+});

@@ -213,17 +213,19 @@
   function selectSentences(documents, result, question, limit) {
     var q = new Set(E.words(question).concat(result.queryWords || [])), items = [];
     var semanticPages = new Set(result.semanticPages || []);
-    var sources = result.overview ? [] : (result.references || []).filter(function (ref) {
-      return !SourceQuality || SourceQuality.isUsablePage({text:ref.text, ocr:ref.ocr, ocrStats:ref.ocrStats, edited:ref.edited});
-    });
+    // Engine.search already filters unusable pages and returns the exact indexed text,
+    // including text-layer fallback for pages whose OCR acceptance is low.
+    var sources = result.overview ? [] : (result.references || []);
 
     // Full-reference summaries sample the complete document, not just its opening pages.
     if (result.overview) {
       documents.forEach(function (doc) {
         (doc.pages || []).forEach(function (page) {
-          if (page.text && (!SourceQuality || SourceQuality.isUsablePage(page))) sources.push({
+          var sourceText = SourceQuality ? SourceQuality.searchableText(page) : String(page.text || '');
+          if (sourceText.trim()) sources.push({
             docId: doc.id, docName: doc.name, page: page.page, type: doc.type,
-            text: page.text, ocr: !!page.ocr, ocrStats: page.ocrStats || null, edited: page.edited === true
+            text: sourceText, ocr: !!page.ocr && !(SourceQuality && SourceQuality.isLowConfidenceOcrPage(page)),
+            ocrStats: page.ocrStats || null, edited: page.edited === true
           });
         });
       });
@@ -594,9 +596,10 @@
         if (!SourceQuality || !SourceQuality.isUsablePage(page)) {
           return;
         }
-        if (SourceQuality.containsUncertainOcrMarker(page.text)) return;
+        var sourceText = SourceQuality ? SourceQuality.searchableText(page) : String(page.text || '');
+        if (!sourceText.trim() || (SourceQuality && SourceQuality.containsUncertainOcrMarker(sourceText))) return;
         sourcePageByKey.set(String(doc.id) + ':' + String(page.page), {doc:doc,page:page});
-        var fList = KnowledgeModule.extractFactsFromSentence(page.text, doc.name, page.page, doc.id);
+        var fList = KnowledgeModule.extractFactsFromSentence(sourceText, doc.name, page.page, doc.id);
         fList.forEach(function (f) { kb.addFact(f); });
       });
     });
