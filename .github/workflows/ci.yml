@@ -92,11 +92,11 @@ jobs:
         working-directory: desktop
         shell: pwsh
         run: |
-          $files = Get-ChildItem .\\release\\*.exe
+          $files = Get-ChildItem .\release\*.exe
           if ($files.Count -ne 2) { throw \"Expected installer and portable EXE; found $($files.Count)\" }
           $lines = $files | Get-FileHash -Algorithm SHA256 | ForEach-Object { \"$($_.Hash)  $([System.IO.Path]::GetFileName($_.Path))\" }
-          $lines | Set-Content .\\release\\SHA256SUMS.txt -Encoding ascii
-          Get-Content .\\release\\SHA256SUMS.txt
+          $lines | Set-Content .\release\SHA256SUMS.txt -Encoding ascii
+          Get-Content .\release\SHA256SUMS.txt
 
       - name: Upload Windows artifacts
         uses: actions/upload-artifact@v4
