@@ -170,7 +170,7 @@
     $('source-empty').hidden = docs.length > 0;
     $('welcome-upload').innerHTML = icon('plus') + (docs.length ? ' إضافة مصدر آخر' : ' أضف مصدرك الأول');
     $('source-list').innerHTML = docs.map(function (d) {
-      var detail = d.type === 'pdf' ? fmt(d.pages.length) + ' صفحة معالجة من ' + fmt(d.totalPages || d.pages.length) + ((d.extraction && d.extraction.skippedOcrPages) ? ' · OCR متجاوز: ' + fmt(d.extraction.skippedOcrPages) : '') + ((d.extraction && d.extraction.lowConfidenceOcrPages) ? ' · OCR يحتاج مراجعة: ' + fmt(d.extraction.lowConfidenceOcrPages) : '') : (d.type === 'image' ? 'صورة مفردة' + (d.pages[0] && d.pages[0].text ? ' · نص مقروء' : ' · تحتاج إدخال النص') : 'نص مضاف');
+      var detail = d.type === 'pdf' ? fmt(d.pages.length) + ' صفحة معالجة من ' + fmt(d.totalPages || d.pages.length) + ((d.extraction && d.extraction.skippedOcrPages) ? ' · OCR متجاوز: ' + fmt(d.extraction.skippedOcrPages) : '') + ((d.extraction && d.extraction.lowConfidenceOcrPages) ? ' · OCR يحتاج مراجعة: ' + fmt(d.extraction.lowConfidenceOcrPages) : '') + ((d.extraction && d.extraction.previewOmittedPages) ? ' · معاينات غير محفوظة: ' + fmt(d.extraction.previewOmittedPages) : '') : (d.type === 'image' ? 'صورة مفردة' + (d.pages[0] && d.pages[0].text ? ' · نص مقروء' : ' · تحتاج إدخال النص') : 'نص مضاف');
       return '<div class="source-item"><div class="source-file-icon ' + (d.type !== 'pdf' ? 'text' : '') + '">' + icon('file') + '</div><button class="source-item-copy" data-source="' + esc(d.id) + '"><strong dir="auto">' + esc(d.name) + '</strong><small>' + detail + '</small></button><button class="source-delete" data-delete="' + esc(d.id) + '" aria-label="حذف المصدر">' + icon('trash') + '</button></div>';
     }).join('');
     $('source-list').querySelectorAll('[data-source]').forEach(function (el) { el.onclick = function () { openDocument(el.dataset.source, 1); }; });
@@ -281,6 +281,7 @@
       if (page.edited) content += '<p class="excerpt-note">تم تصحيح نص هذه الصفحة يدويًا.</p>';
       if (typeof page.preview === 'string' && page.preview.length < 1600000 && /^data:image\/jpeg;base64,[A-Za-z0-9+/=]+$/.test(page.preview))
         content += '<img class="ocr-preview" src="' + esc(page.preview) + '" alt="صورة الصفحة المصوّرة">';
+      else if (page.previewOmitted) content += '<p class="excerpt-note">لم تُحفظ معاينة هذه الصفحة بسبب حد التخزين المحلي. النص المستخرج متاح للمراجعة، لكن المقارنة البصرية تتطلب إعادة استيراد المصدر.</p>';
     }
     content += '<div class="excerpt-text" dir="auto">' + esc(page.text || 'لا يوجد نص قابل للاستخراج في هذه الصفحة.') + '</div><div class="excerpt-note">هذه نسخة نصية محلية وقد يختلف ترتيبها عن الملف الأصلي.</div>';
     content += '<div class="model-actions"><button class="button-secondary" id="edit-page">تصحيح نص الصفحة</button>';
@@ -299,6 +300,7 @@
     var content = '<p class="excerpt-note">صحّح النص بعد مقارنته بالصفحة الأصلية. ستستخدم الأسئلة اللاحقة النص المصحح؛ لن تتغير الاقتباسات السابقة.</p>';
     if (page.ocr && typeof page.preview === 'string' && page.preview.length < 1600000 && /^data:image\/jpeg;base64,[A-Za-z0-9+/=]+$/.test(page.preview))
       content += '<img class="ocr-preview" src="' + esc(page.preview) + '" alt="صورة الصفحة المصوّرة للمراجعة">';
+    else if (page.previewOmitted) content += '<p class="excerpt-note">لم تُحفظ معاينة هذه الصفحة بسبب حد التخزين المحلي. أعد استيراد المصدر بعد تحرير مساحة المعاينات لمراجعتها بصريًا.</p>';
     content += '<label class="field"><span>النص</span><textarea id="page-edit" style="min-height:220px" dir="auto">' + esc(page.text || '') + '</textarea></label>';
     openModal(modalShell('تصحيح النص', doc.name + ' · الصفحة ' + fmt(page.page), content, '<button class="button-secondary" id="edit-cancel">إلغاء</button><button class="button-primary" id="edit-save">حفظ</button>'), 'edit-page');
     $('edit-cancel').onclick = function () { openDocument(id, pageNumber); };
@@ -387,7 +389,7 @@
       '<section class="settings-section"><h3>القيود وطريقة الإجابة</h3><div class="setting-row"><div><strong>المصادر فقط</strong><small>يعرض جملًا من المراجع فقط، ولا يحسب من السؤال بصورة مستقلة.</small></div><label class="switch"><input type="checkbox" id="strict-mode" ' + (s.mode === 'strict' ? 'checked' : '') + '><span></span></label></div>' +
       '<div class="setting-row"><div><strong>السماح بالحساب المحلي</strong><small>للعمليات والمعادلات الخطية البسيطة عند إيقاف وضع المصادر فقط.</small></div><label class="switch"><input type="checkbox" id="allow-math" ' + (s.allowMath !== false ? 'checked' : '') + '><span></span></label></div>' +
       '<label class="field"><span>عمق الإجابة وعدد المقاطع المرجعية</span><select id="max-sentences"><option value="24">مفصل</option><option value="36">موسع — الافتراضي</option><option value="48">عميق</option><option value="60">شامل حسب محتوى المرجع</option></select></label></section>' +
-      '<section class="settings-section"><h3>قراءة الصفحات المصوّرة</h3><div class="setting-row"><div><strong>محاولة قراءة النص المطبوع من الصورة</strong><small>قوالب وقاموس محليان، وتشمل صور PNG/JPEG/WebP المنفصلة.</small></div><label class="switch"><input type="checkbox" id="ocr-enabled" ' + (s.ocrEnabled !== false ? 'checked' : '') + '><span></span></label></div><label class="field"><span>الحد الأقصى لصفحات OCR في كل PDF</span><select id="ocr-page-limit"><option value="15">15 صفحة</option><option value="40">40 صفحة</option><option value="80">80 صفحة</option></select></label><p class="field-help">OCR تجريبي للخطوط المطبوعة الواضحة فقط؛ لا يقرأ الخط اليدوي أو يفهم الرسوم والجداول المعقدة. عند تجاوز الحد تحفظ معاينات الصور للمراجعة اليدوية. نسبة القبول المعجمية ليست نسبة دقة.</p></section>' +
+      '<section class="settings-section"><h3>قراءة الصفحات المصوّرة</h3><div class="setting-row"><div><strong>محاولة قراءة النص المطبوع من الصورة</strong><small>قوالب وقاموس محليان، وتشمل صور PNG/JPEG/WebP المنفصلة.</small></div><label class="switch"><input type="checkbox" id="ocr-enabled" ' + (s.ocrEnabled !== false ? 'checked' : '') + '><span></span></label></div><label class="field"><span>الحد الأقصى لصفحات OCR في كل PDF</span><select id="ocr-page-limit"><option value="15">15 صفحة</option><option value="40">40 صفحة</option><option value="80">80 صفحة</option></select></label><p class="field-help">OCR تجريبي للخطوط المطبوعة الواضحة فقط؛ لا يقرأ الخط اليدوي أو يفهم الرسوم والجداول المعقدة. عند تجاوز الحد تحفظ معاينات الصور للمراجعة اليدوية. نسبة القبول المعجمية ليست نسبة دقة. تُحفظ معاينات الصور ضمن ميزانية تخزين حتى لا يتعطل حفظ بقية الدفتر؛ إذا تجاوزت الحد يحتفظ التطبيق بالنص المتاح ويبلغك بالصفحات التي لا تتوفر لها معاينة.</p></section>' +
       '<section class="settings-section"><h3>الخصوصية والتطوير</h3><p>المصادر والمحادثات محلية، ولا يطلب التطبيق صلاحية الإنترنت. البحث والتلخيص اقتباسيان، ولا يتعامل المحرك مع كل أنواع الأسئلة.</p><p style="margin-top:8px;font-size:0.85em;color:var(--text-secondary)">المطور محمد الفقيه</p></section>';
     openModal(modalShell('الإعدادات والتحكم', 'اضبط القيود المناسبة لك.', content, '<button class="button-secondary" id="cancel-settings">إلغاء</button><button class="button-primary" id="save-settings">حفظ الإعدادات</button>'), 'settings');
     $('max-sentences').value = String(s.maxSentences || 36);
@@ -438,25 +440,55 @@
     return [15, 40, 80].indexOf(value) >= 0 ? value : 40;
   }
 
-  function imagePreview(canvas) {
+  function storedPreviewChars() {
+    var total = 0;
+    (state && Array.isArray(state.sessions) ? state.sessions : []).forEach(function (session) {
+      (session.documents || []).forEach(function (doc) {
+        (doc.pages || []).forEach(function (page) { total += String(page.preview || '').length; });
+      });
+    });
+    return total;
+  }
+
+  function createPreviewBudget() {
+    // Native Android storage allows a larger atomic JSON state than browser localStorage.
+    var maximum = Native ? 36 * 1024 * 1024 : Math.floor(1.5 * 1024 * 1024);
+    return {remaining: Math.max(0, maximum - storedPreviewChars()), omittedPages: 0};
+  }
+
+  function imagePreview(canvas, budget) {
+    if (!budget || budget.remaining < 8000) { if (budget) budget.omittedPages++; return null; }
     var preview = document.createElement('canvas');
-    var ratio = Math.min(1, 1400 / Math.max(canvas.width, canvas.height));
-    preview.width = Math.max(1, Math.round(canvas.width * ratio));
-    preview.height = Math.max(1, Math.round(canvas.height * ratio));
-    var context = preview.getContext('2d', {alpha: false});
-    context.fillStyle = '#fff'; context.fillRect(0, 0, preview.width, preview.height);
-    context.drawImage(canvas, 0, 0, preview.width, preview.height);
-    var data = preview.toDataURL('image/jpeg', 0.66);
-    if (data.length >= 1500000) {
-      var smallRatio = Math.min(1, 900 / Math.max(canvas.width, canvas.height));
-      preview.width = Math.max(1, Math.round(canvas.width * smallRatio));
-      preview.height = Math.max(1, Math.round(canvas.height * smallRatio));
-      context = preview.getContext('2d', {alpha: false});
-      context.fillStyle = '#fff'; context.fillRect(0, 0, preview.width, preview.height);
-      context.drawImage(canvas, 0, 0, preview.width, preview.height);
-      data = preview.toDataURL('image/jpeg', 0.52);
+    var maxPageChars = Math.min(budget.remaining, Native ? 220 * 1024 : 120 * 1024);
+    var maxSide = Native ? 1200 : 1000;
+    var ratio = Math.min(1, maxSide / Math.max(canvas.width, canvas.height));
+    var width = Math.max(1, Math.round(canvas.width * ratio));
+    var height = Math.max(1, Math.round(canvas.height * ratio));
+    function renderAt(w, h) {
+      preview.width = w; preview.height = h;
+      var context = preview.getContext('2d', {alpha: false});
+      context.fillStyle = '#fff'; context.fillRect(0, 0, w, h);
+      context.drawImage(canvas, 0, 0, w, h);
+    }
+    renderAt(width, height);
+    var data = preview.toDataURL('image/jpeg', Native ? 0.54 : 0.46);
+    if (data.length > maxPageChars) {
+      var reduction = Math.max(0.25, Math.sqrt(maxPageChars / data.length) * 0.88);
+      width = Math.max(240, Math.round(width * reduction));
+      height = Math.max(240, Math.round(height * reduction));
+      renderAt(width, height);
+      data = preview.toDataURL('image/jpeg', Native ? 0.42 : 0.36);
+    }
+    if (data.length > maxPageChars && Math.max(width, height) > 420) {
+      var finalScale = 420 / Math.max(width, height);
+      width = Math.max(240, Math.round(width * finalScale));
+      height = Math.max(240, Math.round(height * finalScale));
+      renderAt(width, height);
+      data = preview.toDataURL('image/jpeg', 0.32);
     }
     preview.width = preview.height = 1;
+    if (data.length > maxPageChars || data.length > budget.remaining) { budget.omittedPages++; return null; }
+    budget.remaining -= data.length;
     return data;
   }
 
@@ -500,7 +532,7 @@
     });
   }
 
-  async function extractFile(file) {
+  async function extractFile(file, previewBudget) {
     if (file.size > MAX_FILE_BYTES) throw new Error('حجم الملف يتجاوز ٦٠ ميغابايت.');
     var lower = String(file.name || '').toLowerCase();
     var pdf = lower.endsWith('.pdf') || file.type === 'application/pdf';
@@ -525,7 +557,8 @@
       var imagePage = {page: 1, text: '', ocr: true, extractionMethod: 'image-ocr'};
       var imageWarnings = [];
       try {
-        imagePage.preview = imagePreview(imageCanvas);
+        imagePage.preview = imagePreview(imageCanvas, previewBudget);
+        if (!imagePage.preview) { imagePage.previewOmitted = true; imageWarnings.push('لم تُحفظ معاينة الصورة بسبب بلوغ مساحة الصور المخصصة للتخزين المحلي.'); }
         if (state.settings.ocrEnabled === false) {
           imagePage.ocrSkipped = true;
           imageWarnings.push('تم حفظ صورة الملف، لكن قراءة النص متوقفة في الإعدادات. فعّل قراءة الصور إذا كنت تريد محاولة OCR؛ ويمكنك أيضًا إدخال النص يدويًا.');
@@ -563,7 +596,7 @@
     }
     var totalPages = pdfDoc.numPages, pages = [], count = Math.min(totalPages, MAX_PAGES), totalChars = 0;
     var maxOcrPages = selectedOcrPageLimit();
-    var empty = 0, truncated = false, ocrCount = 0, skipped = 0, ocrFailed = 0, uncertain = 0, recognized = 0, lowRecognitionPages = 0, limited = 0, textLayerPages = 0, imagePages = 0;
+    var empty = 0, truncated = false, ocrCount = 0, skipped = 0, ocrFailed = 0, uncertain = 0, recognized = 0, lowRecognitionPages = 0, limited = 0, textLayerPages = 0, imagePages = 0, previewOmittedPages = 0;
     try {
       for (var i = 1; i <= count; i++) {
         if (cancelProcessing) throw new Error('أُوقفت القراءة؛ لم يُحفظ الملف الحالي.');
@@ -592,7 +625,8 @@
             context.fillStyle = '#fff'; context.fillRect(0, 0, canvas.width, canvas.height);
             await page.render({canvasContext: context, viewport: viewport, background: '#fff'}).promise;
             if (cancelProcessing) throw new Error('أُوقفت القراءة؛ لم يُحفظ الملف الحالي.');
-            pageData.preview = imagePreview(canvas);
+            pageData.preview = imagePreview(canvas, previewBudget);
+            if (!pageData.preview) { pageData.previewOmitted = true; previewOmittedPages++; }
             if (state.settings.ocrEnabled !== false && ocrCount < maxOcrPages) {
               ocrCount++; pageData.extractionMethod = pageText.trim() ? 'text-layer+ocr' : 'image-ocr';
               $('typing-text').textContent = 'أحاول قراءة صورة الصفحة ' + fmt(i) + ' من ' + fmt(count);
@@ -625,6 +659,7 @@
     var warnings = [];
     if (imagePages) warnings.push('عُثر على ' + fmt(imagePages) + ' صفحة تحتوي صورًا أو صفحات ممسوحة ضوئيًا.');
     if (ocrCount) warnings.push('حاولت قراءة ' + fmt(ocrCount) + ' صفحة مصوّرة. قراءة OCR تجريبية وليست ضمانًا لصحة الكلمات؛ راجع صورة الصفحة والنص.');
+    if (previewOmittedPages) warnings.push('لم تُحفظ معاينة صور ' + fmt(previewOmittedPages) + ' صفحة بسبب مساحة تخزين المعاينات؛ قد لا تتاح مراجعتها بصريًا داخل الدفتر.');
     if (uncertain) warnings.push('الرمز □ يمثل كلمات لم تُعرف بثقة (' + fmt(uncertain) + ').');
     if (lowRecognitionPages) warnings.push('صفحات OCR منخفضة القبول المعجمي (' + fmt(lowRecognitionPages) + ') استُبعدت من البحث حتى تصحيحها يدويًا.');
     if (empty) warnings.push(fmt(empty) + ' صفحة بلا نص مستخرج قابل للبحث؛ احتفظنا بمعاينتها إن كانت مصورة.');
@@ -633,16 +668,16 @@
     if (state.settings.ocrEnabled === false) warnings.push('فعّل قراءة الصور من الإعدادات إذا كنت تريد محاولة OCR للصفحات المصوّرة.');
     if (skipped) warnings.push('لم تتم محاولة OCR في ' + fmt(skipped) + ' صفحة بسبب الإعداد أو حد ' + fmt(maxOcrPages) + ' صفحة لكل ملف؛ بقيت معاينات الصفحات للمراجعة اليدوية.');
     if (totalPages > MAX_PAGES || truncated) warnings.push('لم تُعالج كل الصفحات؛ عولجت ' + fmt(pages.length) + ' صفحة من ' + fmt(totalPages) + ' بسبب حدود الصفحات أو النص.');
-    var extraction = {totalPages: totalPages, processedPages: pages.length, textLayerPages: textLayerPages, imagePages: imagePages, ocrAttemptedPages: ocrCount, skippedOcrPages: skipped, ocrFailedPages: ocrFailed, lowConfidenceOcrPages: lowRecognitionPages, emptyPages: empty, recognizedWords: recognized, uncertainWords: uncertain, ocrPageLimit: maxOcrPages, pageLimitReached: totalPages > MAX_PAGES, textLimitReached: truncated, warnings: warnings};
+    var extraction = {totalPages: totalPages, processedPages: pages.length, textLayerPages: textLayerPages, imagePages: imagePages, ocrAttemptedPages: ocrCount, skippedOcrPages: skipped, ocrFailedPages: ocrFailed, lowConfidenceOcrPages: lowRecognitionPages, previewOmittedPages: previewOmittedPages, emptyPages: empty, recognizedWords: recognized, uncertainWords: uncertain, ocrPageLimit: maxOcrPages, pageLimitReached: totalPages > MAX_PAGES, textLimitReached: truncated, warnings: warnings};
     return {doc: {id: uid(), name: file.name, type: 'pdf', pages: pages, totalPages: totalPages, extraction: extraction}, warning: warnings.join(' ')};
   }
   async function importFiles(fileList) {
     if (!fileList || !fileList.length || isBusy()) return;
     processing = true; cancelProcessing = false; renderAll(); scrollBottom();
-    var session = activeSession(), added = 0, notices = [];
+    var session = activeSession(), added = 0, notices = [], previewBudget = createPreviewBudget();
     for (var i = 0; i < fileList.length; i++) {
       try {
-        var result = await extractFile(fileList[i]);
+        var result = await extractFile(fileList[i], previewBudget);
         var oldModelData = session.semanticModelData || null;
         var oldModelStatus = session.semanticModelStatus || 'pending';
         session.documents.push(result.doc);
@@ -660,6 +695,7 @@
       } catch (err) { notices.push(fileList[i].name + ': ' + (err && err.message ? err.message : 'تعذّرت قراءة الملف.')); }
       if (cancelProcessing) break;
     }
+    if (previewBudget.omittedPages && !notices.some(function (item) { return item.indexOf('معاينة') >= 0; })) notices.push('تم تجاوز مساحة تخزين معاينات الصور لعدد ' + fmt(previewBudget.omittedPages) + ' صفحة. النص المستخرج يبقى محفوظًا عند نجاح الحفظ.');
     processing = false; renderAll();
     if (notices.length) openModal(modalShell('نتيجة إضافة المصادر', added ? 'تمت إضافة ' + fmt(added) + ' من الملفات.' : 'لم تتم إضافة أي ملف.', '<p class="excerpt-note" style="white-space:pre-wrap">' + esc(notices.join('\n\n')) + '</p>', '<button class="button-primary" id="import-ok">حسنًا</button>'), 'import');
     else if (added) toast('أُضيفت المصادر إلى دفترك.');

@@ -145,6 +145,8 @@ async function createStandaloneImage(page) {
       await page.locator('#page-edit').fill('التحليل الأمني للمراجع يتطلب مقارنة النص بالصورة الأصلية.');
       await page.locator('#edit-save').click();
       assert.match(await page.locator('.excerpt-text').innerText(),/التحليل الأمني للمراجع/);
+      const stateBytes = await page.evaluate(() => new Blob([localStorage.getItem('midad-state-v1') || '']).size);
+      assert.ok(stateBytes < 5 * 1024 * 1024, 'image previews must stay within browser storage quota');
       await finish(scope,'Standalone image import, local OCR preview and manual text correction');
     }
 

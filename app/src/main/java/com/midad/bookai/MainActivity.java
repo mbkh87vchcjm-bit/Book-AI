@@ -93,7 +93,8 @@ public final class MainActivity extends Activity {
                     intent.addCategory(Intent.CATEGORY_OPENABLE);
                     intent.setType("*/*");
                     intent.putExtra(Intent.EXTRA_MIME_TYPES, new String[] {
-                            "application/pdf", "text/plain", "text/markdown"
+                            "application/pdf", "text/plain", "text/markdown",
+                            "image/png", "image/jpeg", "image/webp"
                     });
                     intent.putExtra(Intent.EXTRA_ALLOW_MULTIPLE, true);
                     startActivityForResult(intent, PICK_DOCUMENTS);

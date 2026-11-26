@@ -32,7 +32,7 @@ test('source coverage reports incomplete extraction and page quality without con
     {name:'Scan.pdf',type:'pdf',totalPages:4,extraction:{skippedOcrPages:1},pages:[
       {page:1,text:'Typed text',extractionMethod:'text-layer'},
       {page:2,text:'OCR text',ocr:true,ocrStats:{recognitionRate:0.9}},
-      {page:3,text:'Weak OCR',ocr:true,ocrStats:{recognitionRate:0.2}},
+      {page:3,text:'Weak OCR',ocr:true,ocrStats:{recognitionRate:0.2},previewOmitted:true},
       {page:4,text:'',ocrSkipped:true}
     ]},
     {name:'notes.txt',type:'text',totalPages:1,pages:[{page:1,text:'Notes'}]}
@@ -43,6 +43,7 @@ test('source coverage reports incomplete extraction and page quality without con
   assert.equal(summary.searchablePages,3);
   assert.equal(summary.ocrPages,2);
   assert.equal(summary.lowConfidenceOcrPages,1);
+  assert.equal(summary.previewOmittedPages,1);
   assert.equal(summary.indexedCoverage,0.6);
   assert.ok(summary.totalCharacters > 0);
 });

@@ -59,6 +59,7 @@
       ocrPages: 0,
       editedPages: 0,
       skippedOcrPages: 0,
+      previewOmittedPages: 0,
       lowConfidenceOcrPages: 0,
       emptyPages: 0,
       totalCharacters: 0,
@@ -67,6 +68,7 @@
     docs.forEach((doc) => {
       const pages = Array.isArray(doc && doc.pages) ? doc.pages : [];
       result.totalPages += Math.max(pages.length, Number(doc && doc.totalPages) || 0);
+      let countedSkippedPages = 0;
       pages.forEach((page) => {
         result.storedPages++;
         const text = String(page && page.text || '');
@@ -79,12 +81,13 @@
         }
         if (page && page.ocr) result.ocrPages++;
         if (page && page.edited) result.editedPages++;
-        if (page && page.ocrSkipped) result.skippedOcrPages++;
+        if (page && page.ocrSkipped) { result.skippedOcrPages++; countedSkippedPages++; }
+        if (page && page.previewOmitted) result.previewOmittedPages++;
         if (isLowConfidenceOcrPage(page)) result.lowConfidenceOcrPages++;
         if (isUsablePage(page)) result.searchablePages++;
       });
       if (doc && doc.extraction && Number.isFinite(Number(doc.extraction.skippedOcrPages))) {
-        result.skippedOcrPages = Math.max(result.skippedOcrPages, Number(doc.extraction.skippedOcrPages));
+        result.skippedOcrPages += Math.max(0, Number(doc.extraction.skippedOcrPages) - countedSkippedPages);
       }
     });
     result.indexedCoverage = result.totalPages

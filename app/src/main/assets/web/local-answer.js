@@ -534,6 +534,7 @@
       text += 'المراجع: ' + corpusStats.documents + '؛ الصفحات المخزنة: ' + corpusStats.storedPages + ' من ' + corpusStats.totalPages +
         '؛ الصفحات النصية القابلة للبحث: ' + corpusStats.searchablePages + '؛ المقاطع المفهرسة: ' + corpusStats.totalChunks + '. ';
       if (corpusStats.lowConfidenceOcrPages) text += 'استُبعدت ' + corpusStats.lowConfidenceOcrPages + ' صفحة OCR منخفضة القبول المعجمي حتى تتم مراجعتها وتصحيحها. ';
+      if (corpusStats.previewOmittedPages) text += 'لا تتوفر معاينات مرئية لـ ' + corpusStats.previewOmittedPages + ' صفحة بسبب ميزانية التخزين؛ نص الصفحة يبقى متاحًا فقط إذا نجح استخراجه. ';
       if (found.overview) {
         var sampledPages = new Set(selected.map(function (item) { return String(item.ref.docId || item.ref.docName) + ':' + item.ref.page; })).size;
         text += 'هذا ملخص تمثيلي اقتبس ' + sampledPages + ' صفحة من ' + corpusStats.searchablePages + ' صفحة قابلة للبحث؛ لا يعني أنه يعرض كل جملة أو كل صفحة.';
