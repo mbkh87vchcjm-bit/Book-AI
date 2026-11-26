@@ -49,7 +49,7 @@ test('default policy objects are immutable', () => {
 test('user can configure defensive analysis scope, analyzers, limits, and severity', () => {
   const policy = Policy.createPolicy({
     mode: 'review', scope: {allowedPaths: ['src', 'tests'], excludedPaths: ['src/generated']},
-    analyzers: ['builtin', 'ast', 'semgrep', 'dependency-audit'], severityThreshold: 'high',
+    analyzers: ['builtin', 'ast', 'dependency-audit'], severityThreshold: 'high',
     limits: {maxFiles: 100, maxFileBytes: 500000, maxTotalBytes: 5000000, maxFindings: 50, timeoutMs: 30000},
     capabilities: {remediationSuggestions: true, applyRemediations: true}
   });
@@ -58,7 +58,8 @@ test('user can configure defensive analysis scope, analyzers, limits, and severi
   assert.deepEqual(policy.scope.allowedPaths, ['src', 'tests']);
   assert.equal(policy.limits.maxFiles, 100);
   assert.equal(policy.severityThreshold, 'high');
-  assert.deepEqual(policy.analyzers, ['builtin', 'ast', 'semgrep', 'dependency-audit']);
+  assert.deepEqual(policy.analyzers, ['builtin', 'ast', 'dependency-audit']);
+  assert.equal(policy.capabilities.applyRemediations, false);
 });
 
 test('platform guardrails cannot be enabled through user preferences', () => {
@@ -126,16 +127,19 @@ test('education mode only authorizes learning and concept explanations', () => {
   assert.equal(Policy.authorizeAction('static-analysis', policy).reason, 'education-mode-only');
 });
 
-test('fix suggestions require review mode; applying a fix requires explicit approval', () => {
+test('fix suggestions are non-mutating and file-changing remediation remains disabled', () => {
   const readOnly = Policy.createPolicy({mode: 'read-only'});
   assert.equal(Policy.authorizeAction('suggest-fix', readOnly, {path: 'src/a.php'}).allowed, true);
   const review = Policy.createPolicy({mode: 'review', capabilities: {remediationSuggestions: true, applyRemediations: true}});
   assert.equal(Policy.authorizeAction('suggest-fix', review, {path: 'src/a.php'}).allowed, true);
-  assert.equal(Policy.authorizeAction('apply-fix', review, {path: 'src/a.php'}).reason, 'explicit-user-approval-required');
-  assert.equal(Policy.authorizeAction('apply-fix', review, {path: 'src/a.php', userApproved: true}).reason, 'change-summary-required');
+  assert.equal(review.capabilities.applyRemediations, false);
   assert.equal(Policy.authorizeAction('apply-fix', review, {
     path: 'src/a.php', userApproved: true, changeSummary: 'Use a parameterized query'
-  }).allowed, true);
+  }).reason, 'remediation-application-not-implemented');
+
+  const tampered = Policy.createPolicy();
+  tampered.capabilities.applyRemediations = true;
+  assert.equal(Policy.validatePolicy(tampered).valid, false);
 });
 
 test('dangerous or out-of-scope active actions remain blocked', () => {
