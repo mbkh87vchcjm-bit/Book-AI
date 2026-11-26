@@ -16,11 +16,14 @@
 
   function showPage(page) {
     const dashboard = page === 'dashboard';
+    const glossary = page === 'glossary';
     $('dashboard-page').classList.toggle('hidden', !dashboard);
-    $('settings-page').classList.toggle('hidden', dashboard);
+    $('glossary-page').classList.toggle('hidden', !glossary);
+    $('settings-page').classList.toggle('hidden', dashboard || glossary);
     $('nav-dashboard').classList.toggle('active', dashboard);
-    $('nav-settings').classList.toggle('active', !dashboard);
-    $('page-title').textContent = dashboard ? 'لوحة الفحص الأمني' : 'سياسات التحكم';
+    $('nav-glossary').classList.toggle('active', glossary);
+    $('nav-settings').classList.toggle('active', !dashboard && !glossary);
+    $('page-title').textContent = dashboard ? 'لوحة الفحص الأمني' : glossary ? 'قاموس المفاهيم' : 'سياسات التحكم';
   }
 
   function pathsFromTextarea(value) {
@@ -225,6 +228,111 @@
     else if (!result.canceled) toast('تعذر حفظ التقرير.');
   }
 
+
+  function addConceptField(parent, label, value) {
+    const row = document.createElement('div');
+    row.className = 'concept-field';
+    const heading = document.createElement('strong');
+    heading.textContent = label;
+    const text = document.createElement('p');
+    text.textContent = value || 'غير متوفر في سجل المفاهيم الحالي.';
+    row.append(heading, text);
+    parent.appendChild(row);
+  }
+
+  function renderConceptLookup(result) {
+    const container = $('concept-result');
+    container.replaceChildren();
+    if (result.status === 'ambiguous') {
+      const heading = document.createElement('strong');
+      heading.textContent = 'المصطلح يحتمل أكثر من معنى';
+      const note = document.createElement('p');
+      note.textContent = 'أضف سياق الاستخدام لتحديد المقصود بدقة.';
+      container.append(heading, note);
+      result.matches.forEach((concept) => {
+        const option = document.createElement('div');
+        option.className = 'concept-option';
+        const name = document.createElement('strong');
+        name.textContent = concept.term + ' — ' + concept.ar;
+        const domain = document.createElement('span');
+        domain.textContent = concept.domain;
+        const definition = document.createElement('p');
+        definition.textContent = concept.definition;
+        option.append(name, domain, definition);
+        container.appendChild(option);
+      });
+      return;
+    }
+    if (result.status !== 'resolved') {
+      container.textContent = 'لم يُعثر على مفهوم مطابق في القاموس الحالي. يمكن إضافته لاحقاً بعد التحقق من مصدر موثوق.';
+      return;
+    }
+    const concept = result.concept;
+    const heading = document.createElement('h3');
+    heading.textContent = concept.term + ' — ' + concept.ar;
+    container.appendChild(heading);
+    addConceptField(container, 'المجال', concept.domain);
+    addConceptField(container, 'التعريف', concept.definition);
+    addConceptField(container, 'التمييز المهم', concept.distinction);
+    addConceptField(container, 'مثال', concept.example);
+    const refs = document.createElement('p');
+    refs.className = 'muted';
+    refs.textContent = 'معرف المفهوم: ' + concept.id + ' · سجل تعليمي أولي يحتاج توثيقاً موسعاً بالمراجع.';
+    container.appendChild(refs);
+  }
+
+  function resolveConcept() {
+    const term = $('concept-term').value.trim();
+    const context = $('concept-context').value.trim();
+    if (!term) {
+      toast('أدخل المصطلح الذي تريد فهمه.');
+      return;
+    }
+    renderConceptLookup(window.MidadCyberKnowledge.resolveTerm(term, context));
+  }
+
+  function compareConcepts() {
+    const first = $('compare-first').value.trim();
+    const second = $('compare-second').value.trim();
+    const container = $('comparison-result');
+    container.replaceChildren();
+    if (!first || !second) {
+      toast('أدخل المفهومين أولاً.');
+      return;
+    }
+    const result = window.MidadCyberKnowledge.compareTerms(first, second);
+    if (result.status !== 'compared') {
+      container.textContent = 'تعذر تحديد أحد المفهومين. استخدم اسماً أدق أو افتحه أولاً في أداة تحديد المعنى.';
+      return;
+    }
+    const heading = document.createElement('h3');
+    heading.textContent = result.first.term + ' مقابل ' + result.second.term;
+    container.appendChild(heading);
+    const table = document.createElement('div');
+    table.className = 'comparison-grid';
+    [
+      ['التعريف', result.comparison.definition],
+      ['الفرق الأساسي', result.comparison.distinction],
+      ['مثال', result.comparison.examples]
+    ].forEach(([label, values]) => {
+      const rowLabel = document.createElement('strong');
+      rowLabel.className = 'comparison-label';
+      rowLabel.textContent = label;
+      const left = document.createElement('p');
+      left.textContent = values[0];
+      const right = document.createElement('p');
+      right.textContent = values[1];
+      table.append(rowLabel, left, right);
+    });
+    container.appendChild(table);
+    const relation = document.createElement('p');
+    relation.className = 'muted';
+    relation.textContent = result.relation === 'explicit-contrast'
+      ? 'القاموس يصنف المفهومين كحالتين متقابلتين.'
+      : 'لم تُسجل علاقة تقابل صريحة بين المفهومين.';
+    container.appendChild(relation);
+  }
+
   async function initialize() {
     await loadPolicy();
     $('choose-project').addEventListener('click', chooseProject);
@@ -232,6 +340,9 @@
     $('export-report').addEventListener('click', exportReport);
     $('policy-form').addEventListener('submit', savePolicy);
     $('nav-dashboard').addEventListener('click', () => showPage('dashboard'));
+    $('nav-glossary').addEventListener('click', () => showPage('glossary'));
+    $('resolve-concept').addEventListener('click', resolveConcept);
+    $('compare-concepts').addEventListener('click', compareConcepts);
     $('nav-settings').addEventListener('click', () => showPage('settings'));
     $('open-settings').addEventListener('click', () => showPage('settings'));
     $('cancel-settings').addEventListener('click', () => showPage('dashboard'));
