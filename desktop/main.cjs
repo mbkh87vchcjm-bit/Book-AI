@@ -10,6 +10,7 @@ const Sbom = require('./cyber/core/sbom-export.cjs');
 let mainWindow = null;
 let selectedProjectRoot = null;
 let lastScanReport = null;
+let scanRevision = 0;
 
 function policyFilePath() {
   return path.join(app.getPath('userData'), 'cyber-policy.json');
@@ -73,13 +74,14 @@ ipcMain.handle('cyber:choose-project', async () => {
   });
   if (result.canceled || !result.filePaths.length) return {canceled: true};
   try {
-    selectedProjectRoot = await fs.realpath(result.filePaths[0]);
-    const stat = await fs.stat(selectedProjectRoot);
+    const candidateRoot = await fs.realpath(result.filePaths[0]);
+    const stat = await fs.stat(candidateRoot);
     if (!stat.isDirectory()) return {ok: false, error: 'not-a-directory'};
+    selectedProjectRoot = candidateRoot;
+    scanRevision += 1;
     lastScanReport = null;
-    return {ok: true, project: path.basename(selectedProjectRoot), path: selectedProjectRoot};
+    return {ok: true, project: path.basename(candidateRoot), path: candidateRoot};
   } catch (_) {
-    selectedProjectRoot = null;
     return {ok: false, error: 'project-unavailable'};
   }
 });
@@ -88,7 +90,12 @@ ipcMain.handle('cyber:get-policy', async () => ({ok: true, policy: await loadPol
 
 ipcMain.handle('cyber:save-policy', async (_event, input) => {
   try {
-    return await savePolicy(input);
+    const result = await savePolicy(input);
+    if (result.ok) {
+      scanRevision += 1;
+      lastScanReport = null;
+    }
+    return result;
   } catch (_) {
     return {ok: false, error: 'policy-save-failed'};
   }
@@ -96,9 +103,17 @@ ipcMain.handle('cyber:save-policy', async (_event, input) => {
 
 ipcMain.handle('cyber:scan-project', async () => {
   if (!selectedProjectRoot) return {ok: false, error: 'choose-project-first'};
+  const scanRoot = selectedProjectRoot;
+  const generation = ++scanRevision;
   lastScanReport = null;
   const policy = await loadPolicy();
-  const report = await Scanner.scanProject({root: selectedProjectRoot, policy});
+  if (generation !== scanRevision || selectedProjectRoot !== scanRoot) {
+    return {ok: false, error: 'scan-context-changed'};
+  }
+  const report = await Scanner.scanProject({root: scanRoot, policy});
+  if (generation !== scanRevision || selectedProjectRoot !== scanRoot) {
+    return {ok: false, error: 'scan-context-changed'};
+  }
   if (report && report.ok === true) lastScanReport = report;
   return report;
 });
