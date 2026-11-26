@@ -242,3 +242,18 @@ test('retrieval failure is not presented as proof that a fact is absent from the
   assert.equal(result.origin,'miss');
   assert.match(result.text,/هذا لا يثبت أن المعلومة غير موجودة/);
 });
+
+
+test('answers use reliable pages and disclose low-acceptance OCR pages excluded from the index', () => {
+  const docs = [{id:'scan',name:'Scan.pdf',type:'pdf',totalPages:3,pages:[
+    {page:1,text:'Routing selects a path for packets across networks.'},
+    {page:2,text:'Routing packet network route.',ocr:true,ocrStats:{recognitionRate:0.2}},
+    {page:3,text:'Routing is the process of selecting a path through a network.',ocr:true,ocrStats:{recognitionRate:0.2},edited:true}
+  ]}];
+  const result = A.answer({documents:docs,question:'اشرح عملية Routing',mode:'strict',maxSentences:8});
+  assert.equal(result.origin,'source');
+  assert.ok(result.references.some(ref=>ref.page===1));
+  assert.ok(result.references.some(ref=>ref.page===3));
+  assert.ok(!result.references.some(ref=>ref.page===2));
+  assert.match(result.text,/استُبعدت 1 صفحة OCR منخفضة/);
+});

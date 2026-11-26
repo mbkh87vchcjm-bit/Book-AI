@@ -146,3 +146,28 @@ test('uses a restored corpus-trained network inside grounded source answering', 
   assert.ok(result.references.length>0);
   assert.ok(result.references.every(ref=>ref.docName==='Network Notes.pdf'&&ref.page>0));
 });
+
+
+test('representative semantic training samples cover first, middle and last reference pages', () => {
+  const pages = Array.from({length:101},(_,index)=>({page:index+1}));
+  const selected = Neural.selectRepresentativePages(pages,5);
+  assert.deepEqual(selected.map(item=>item.page),[1,26,51,76,101]);
+});
+
+test('semantic training excludes low-acceptance OCR pages and reports sampled corpus coverage', async () => {
+  const base = 'router forwards packets through networks using routing tables and addresses. ';
+  const pages = Array.from({length:12},(_,index)=>({
+    page:index+1,
+    text:(base.repeat(10)) + 'router packet network route interface gateway.',
+    ...(index===5 ? {ocr:true,ocrStats:{recognitionRate:0.21}} : {})
+  }));
+  const model = await Neural.train([{id:'coverage',name:'Coverage.pdf',type:'pdf',pages}],{
+    maxTokens:12000,maxChars:360000,maxVocabulary:500,dimension:16
+  });
+  assert.ok(model);
+  assert.equal(model.corpusPageCount,11);
+  assert.equal(model.sampledPageCount,11);
+  const restored = Neural.restore(model.exportData());
+  assert.equal(restored.corpusPageCount,11);
+  assert.equal(restored.sampledPageCount,11);
+});

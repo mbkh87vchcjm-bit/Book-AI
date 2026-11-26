@@ -111,3 +111,20 @@ test('Language detection distinguishes Arabic, English, mixed and empty input', 
   assert.equal(Query.detectLanguage('شبك Net'), 'mixed');
   assert.equal(Query.detectLanguage(''), 'unknown');
 });
+
+
+test('English technical sentence with a parenthesized abbreviation is recognized for constrained Arabic translation', () => {
+  const translated = Translator.translateSentence('The Domain Name System (DNS) translates domain names into IP addresses.');
+  assert.equal(translated.status,'complete');
+  assert.equal(translated.translationType,'structured-rule');
+  assert.match(translated.translated,/نظام أسماء النطاقات/);
+  assert.match(translated.translated,/عناوين IP/);
+  assert.match(translated.translated,/يحوّل/);
+});
+
+test('unknown English sentence is not promoted to a complete translation', () => {
+  const translated = Translator.translateSentence('A modern gateway dynamically inspects unusual encrypted sessions.');
+  assert.equal(translated.status,'partial');
+  assert.ok(Array.isArray(translated.unknownWords));
+  assert.ok(translated.unknownWords.length>0);
+});

@@ -6,7 +6,8 @@
       require('./mlke-lexicon.js'),
       require('./mlke-query.js'),
       require('./mlke-translator.js'),
-      require('./mlke-knowledge.js')
+      require('./mlke-knowledge.js'),
+      require('./source-quality.js')
     );
   } else {
     root.MidadAnswer = factory(
@@ -14,10 +15,11 @@
       root.MlkeLexicon,
       root.MlkeQuery,
       root.MlkeTranslator,
-      root.MlkeKnowledge
+      root.MlkeKnowledge,
+      root.MidadSourceQuality
     );
   }
-}(typeof globalThis !== 'undefined' ? globalThis : this, function (E, LexiconClass, QueryModule, TranslatorModule, KnowledgeModule) {
+}(typeof globalThis !== 'undefined' ? globalThis : this, function (E, LexiconClass, QueryModule, TranslatorModule, KnowledgeModule, SourceQuality) {
   'use strict';
 
   function getSharedLexicon(userEntries) {
@@ -164,7 +166,7 @@
     var normalized = joinWrappedLines(text);
     return (normalized.match(/[^.!?؟؛\n]+[.!?؟؛]?/g) || [])
       .map(function (s) { return s.trim(); })
-      .filter(function (s) { return s.length >= 8 && E.words(s).length >= 2; });
+      .filter(function (s) { return s.length >= 8 && E.words(s).length >= 2 && s.indexOf('□') < 0; });
   }
 
   // Maximal Marginal Relevance: balance relevance with lexical diversity.
@@ -211,15 +213,17 @@
   function selectSentences(documents, result, question, limit) {
     var q = new Set(E.words(question).concat(result.queryWords || [])), items = [];
     var semanticPages = new Set(result.semanticPages || []);
-    var sources = result.overview ? [] : (result.references || []);
+    var sources = result.overview ? [] : (result.references || []).filter(function (ref) {
+      return !SourceQuality || SourceQuality.isUsablePage({text:ref.text, ocr:ref.ocr, ocrStats:ref.ocrStats, edited:ref.edited});
+    });
 
     // Full-reference summaries sample the complete document, not just its opening pages.
     if (result.overview) {
       documents.forEach(function (doc) {
         (doc.pages || []).forEach(function (page) {
-          if (page.text) sources.push({
+          if (page.text && (!SourceQuality || SourceQuality.isUsablePage(page))) sources.push({
             docId: doc.id, docName: doc.name, page: page.page, type: doc.type,
-            text: page.text, ocr: !!page.ocr
+            text: page.text, ocr: !!page.ocr, ocrStats: page.ocrStats || null, edited: page.edited === true
           });
         });
       });
@@ -358,13 +362,22 @@
     var source = sourceLabel(item);
     if (language === 'ar' && isEnglishSource(original) && TranslatorModule) {
       var translated = TranslatorModule.translateSentence(original, learningStore);
-      if (translated && translated.status === 'complete' && translated.structured === true && translated.translated &&
-          translated.translated.indexOf('[') < 0) {
-        return (index + 1) + '. ترجمة معجمية تقريبية: ' + translated.translated +
+      if (translated && translated.status === 'user-confirmed' && translated.translated) {
+        return (index + 1) + '. ترجمة صححها الباحث واعتمدها: ' + translated.translated +
+          '\n   النص الأصلي: ' + original + '\n   المصدر: ' + source;
+      }
+      if (translated && translated.status === 'complete' && translated.translated && translated.translated.indexOf('[') < 0) {
+        var label = translated.translationType === 'phrase' ? 'معنى المصطلح في القاموس المحلي' : 'ترجمة معجمية مقيدة بقواعد معروفة';
+        return (index + 1) + '. ' + label + ': ' + translated.translated +
+          '\n   النص الأصلي: ' + original + '\n   المصدر: ' + source;
+      }
+      if (translated && translated.status === 'partial' && translated.translated) {
+        return (index + 1) + '. مصطلحات تعرف عليها القاموس فقط (ليست ترجمة للجملة): ' + translated.translated +
+          (translated.unknownWords && translated.unknownWords.length ? '\n   كلمات لم يترجمها القاموس: ' + translated.unknownWords.join('، ') : '') +
           '\n   النص الأصلي: ' + original + '\n   المصدر: ' + source;
       }
       return (index + 1) + '. النص الأصلي: ' + original + '\n   المصدر: ' + source +
-        '\n   ملاحظة: قاموس الترجمة المحلي لا يغطي هذه الجملة بالكامل.';
+        '\n   ملاحظة: لا تتوفر ترجمة محلية موثوقة لهذه الجملة؛ لم أستبدلها بترجمة تخمينية.';
     }
     return (index + 1) + '. ' + original + '\n   المصدر: ' + source;
   }
@@ -378,7 +391,8 @@
       seen.add(key);
       refs.push({
         docId: ref.docId, docName: ref.docName, page: ref.page, type: ref.type,
-        excerpt: E.shorten(ref.text || item.text || '', 600), ocr: !!ref.ocr
+        excerpt: E.shorten(ref.text || item.text || '', 600), ocr: !!ref.ocr,
+        ocrStats: ref.ocrStats || null, edited: ref.edited === true
       });
     });
     return refs;
@@ -514,6 +528,19 @@
     text += '**السؤال:** ' + question + '\n\n';
     text += '**المقاطع الداعمة من المرجع مرتبة بحسب الصفحات**\n\n';
     text += evidenceSections.join('\n\n');
+    var corpusStats = found && found.corpusStats ? found.corpusStats : null;
+    if (corpusStats) {
+      text += '\n\n**تغطية المرجع المفهرسة**\n';
+      text += 'المراجع: ' + corpusStats.documents + '؛ الصفحات المخزنة: ' + corpusStats.storedPages + ' من ' + corpusStats.totalPages +
+        '؛ الصفحات النصية القابلة للبحث: ' + corpusStats.searchablePages + '؛ المقاطع المفهرسة: ' + corpusStats.totalChunks + '. ';
+      if (corpusStats.lowConfidenceOcrPages) text += 'استُبعدت ' + corpusStats.lowConfidenceOcrPages + ' صفحة OCR منخفضة القبول المعجمي حتى تتم مراجعتها وتصحيحها. ';
+      if (found.overview) {
+        var sampledPages = new Set(selected.map(function (item) { return String(item.ref.docId || item.ref.docName) + ':' + item.ref.page; })).size;
+        text += 'هذا ملخص تمثيلي اقتبس ' + sampledPages + ' صفحة من ' + corpusStats.searchablePages + ' صفحة قابلة للبحث؛ لا يعني أنه يعرض كل جملة أو كل صفحة.';
+      } else {
+        text += 'بحثت في جميع الصفحات القابلة للبحث ضمن النص المستخرج، ثم اخترت المقاطع الأعلى صلة؛ لا يعني ذلك أن OCR قرأ كل عناصر الصفحة البصرية.';
+      }
+    }
     text += '\n\n**حدود الإجابة**\n';
     text += 'هذه إجابة استرجاعية منظمة: جُمعت مقاطع ذات صلة من صفحات متعددة وربط كل مقطع بمصدره. المحرك لا يستخدم نموذجًا لغويًا توليديًا، لذلك لا يخترع شرحًا حرًا أو معلومات ليست في المرجع. ';
     if (selected.length < Math.max(10, Math.floor((Number(options.maxSentences) || 24) * 0.6))) {
@@ -528,7 +555,8 @@
       evidenceCount: selected.length,
       references: uniqueReferences(selected),
       overview: !!found.overview,
-      semanticUsed: !!found.semanticUsed
+      semanticUsed: !!found.semanticUsed,
+      corpusStats: corpusStats
     };
   }
 
@@ -559,8 +587,14 @@
     }
 
     var kb = new KnowledgeModule.KnowledgeBase();
+    var sourcePageByKey = new Map();
     docs.forEach(function (doc) {
       (doc.pages || []).forEach(function (page) {
+        if (!SourceQuality || !SourceQuality.isUsablePage(page)) {
+          return;
+        }
+        if (SourceQuality.containsUncertainOcrMarker(page.text)) return;
+        sourcePageByKey.set(String(doc.id) + ':' + String(page.page), {doc:doc,page:page});
         var fList = KnowledgeModule.extractFactsFromSentence(page.text, doc.name, page.page, doc.id);
         fList.forEach(function (f) { kb.addFact(f); });
       });
@@ -586,7 +620,13 @@
         text: 'قائمة المصطلحات التقنية المستخرجة من مراجعك:\n\n' + tbl,
         origin: 'source',
         references: terms.map(function (t) {
-          return { docName: t.docName, page: t.page, excerpt: t.sourceText, ocr: false };
+          var source = sourcePageByKey.get(String(t.docId) + ':' + String(t.page));
+          var page = source && source.page;
+          return {
+            docId: t.docId, docName: t.docName, page: t.page, type: source && source.doc.type,
+            excerpt: t.sourceText, ocr: !!(page && page.ocr),
+            ocrStats: page && page.ocrStats || null, edited: !!(page && page.edited)
+          };
         })
       };
     }
@@ -615,7 +655,8 @@
       return {
         text: strict && !docs.length
           ? 'أضف مرجعًا أولًا؛ وضع المصادر فقط لا يجيب من خارجها.'
-          : 'لم أجد معلومات كافية قابلة للتوثيق في النص المستخرج. هذا لا يثبت أن المعلومة غير موجودة في الملف؛ قد تكون الصياغة مختلفة أو في صفحة لم تُقرأ جيدًا. افتح نص الصفحات ذات الصلة وتحقق من الاستخراج أو صحح النص ثم أعد السؤال.',
+          : 'لم أجد معلومات كافية قابلة للتوثيق في النص المستخرج. هذا لا يثبت أن المعلومة غير موجودة في الملف؛ قد تكون الصياغة مختلفة أو في صفحة لم تُقرأ جيدًا. افتح نص الصفحات ذات الصلة وتحقق من الاستخراج أو صحح النص ثم أعد السؤال.' +
+            (found.corpusStats && found.corpusStats.lowConfidenceOcrPages ? '\nصفحات OCR منخفضة القبول المعجمي استُبعدت من البحث حتى تتم مراجعتها: ' + found.corpusStats.lowConfidenceOcrPages + '.' : ''),
         origin: 'miss',
         references: []
       };
@@ -632,6 +673,7 @@
     sentences: sentences,
     selectDiverseItems: selectDiverseItems,
     joinWrappedLines: joinWrappedLines,
-    parseComparisonPair: parseComparisonPair
+    parseComparisonPair: parseComparisonPair,
+    renderEvidenceItem: renderEvidenceItem
   };
 }));

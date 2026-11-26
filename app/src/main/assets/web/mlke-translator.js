@@ -99,10 +99,20 @@
     'network traffic according to rules': 'حركة مرور الشبكة وفق قواعد محددة'
   };
 
+  function resolveSubject(lexicon, value) {
+    var subject = String(value || '').trim().replace(/^(?:the|a|an)\s+/i, '');
+    var abbreviation = subject.match(/\(([A-Za-z0-9.+#/-]{2,12})\)\s*$/);
+    if (abbreviation) {
+      var byAbbreviation = exactTerm(lexicon, abbreviation[1]);
+      if (byAbbreviation) return byAbbreviation;
+    }
+    return exactTerm(lexicon, subject);
+  }
+
   function translateKnownSentence(original, lexicon) {
-    var match = String(original || '').trim().match(/^(.+?)\s+(provides|provide|translates|translate|contains|contain|manages|manage|controls|control|executes|execute|identifies|identify)\s+(.+?)[.!?]?\s*$/i);
+    var match = String(original || '').trim().match(/^(.+?)\\s+(provides|provide|translates|translate|contains|contain|manages|manage|controls|control|executes|execute|identifies|identify)\\s+(.+?)[.!?]?\\s*$/i);
     if (!match) return null;
-    var subject = exactTerm(lexicon, match[1]);
+    var subject = resolveSubject(lexicon, match[1]);
     var verbEntry = VERB_MAP[match[2].toLowerCase()];
     var objectArabic = OBJECT_PHRASES[normalizeEnglishPhrase(match[3])];
     if (!subject || !subject.term_ar || !verbEntry || !objectArabic) return null;
@@ -112,10 +122,10 @@
       translated: subject.term_ar + ' ' + verbArabic + ' ' + objectArabic + '.',
       status: 'complete',
       confidence: 0.9,
-      structured: true
+      structured: true,
+      translationType: 'structured-rule'
     };
   }
-
   function translateSentence(sentence, learningStore) {
     var original = String(sentence || '').trim();
     if (!original) return { translated: '', confidence: 0, status: 'empty' };
@@ -141,7 +151,7 @@
     // Exact phrase lookup only; substring matches can map 'data' to 'datagram'.
     var phraseMatch = exactTerm(lexicon, original);
     if (phraseMatch && phraseMatch.term_ar) {
-      return { translated: phraseMatch.term_ar, confidence: 0.95, status: 'complete' };
+      return {original: original, translated: phraseMatch.term_ar, confidence: 0.95, status: 'complete', structured: true, translationType: 'phrase'};
     }
 
     var tokens = original.match(/[a-zA-Z0-9]+|[^\s\w]/g) || [];

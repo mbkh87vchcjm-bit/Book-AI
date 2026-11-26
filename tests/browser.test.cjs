@@ -109,10 +109,44 @@ async function createScannedPdf(page) {
   return imagePdf(images.map(x => Buffer.from(x, 'base64')));
 }
 
+
+async function createStandaloneImage(page) {
+  const encoded = await page.evaluate(() => {
+    const canvas = document.createElement('canvas');
+    canvas.width = 1200; canvas.height = 900;
+    const ctx = canvas.getContext('2d');
+    ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.fillStyle = '#111'; ctx.direction = 'rtl'; ctx.textAlign = 'right';
+    ctx.font = '64px OcrNaskh';
+    ctx.fillText('التحليل الأمني للمراجع', 1120, 220);
+    ctx.font = '42px OcrNaskh';
+    ctx.fillText('يجب مراجعة النص مع الصورة الأصلية', 1120, 310);
+    return canvas.toDataURL('image/png').split(',')[1];
+  });
+  return Buffer.from(encoded, 'base64');
+}
+
 (async () => {
   const localServer = await server();
   const url = `http://127.0.0.1:${localServer.address().port}/`;
   try {
+    {
+      const scope = await browserPage(url), page = scope.page;
+      const image = await createStandaloneImage(page);
+      await page.locator('#file-input').setInputFiles({name:'standalone-reference.png',mimeType:'image/png',buffer:image});
+      await page.waitForFunction(() => document.querySelector('#stop-btn').hidden, null, {timeout:60000});
+      await closeImportNotice(page);
+      assert.equal(await page.locator('.source-item').count(),1);
+      assert.match(await page.locator('.source-item').innerText(),/صورة مفردة/);
+      await page.locator('.source-item-copy').click();
+      assert.equal(await page.locator('.ocr-preview').count(),1);
+      await page.locator('#edit-page').click();
+      await page.locator('#page-edit').fill('التحليل الأمني للمراجع يتطلب مقارنة النص بالصورة الأصلية.');
+      await page.locator('#edit-save').click();
+      assert.match(await page.locator('.excerpt-text').innerText(),/التحليل الأمني للمراجع/);
+      await finish(scope,'Standalone image import, local OCR preview and manual text correction');
+    }
+
     for (const [label, address] of [['HTTP', url], ['file URL', pathToFileURL(path.join(web, 'index.html')).href]]) {
       const scope = await browserPage(address), page = scope.page;
       await upload(page, 'physics.pdf');
