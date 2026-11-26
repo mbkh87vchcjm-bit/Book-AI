@@ -4,6 +4,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
+const vm = require('node:vm');
 
 const root = path.resolve(__dirname, '..');
 const main = fs.readFileSync(path.join(root, 'desktop/main.cjs'), 'utf8');
@@ -33,6 +34,7 @@ test('Electron main process enforces renderer isolation and sandboxing', () => {
   assert.match(main, /setWindowOpenHandler/);
   assert.match(main, /will-navigate/);
   assert.match(main, /setPermissionRequestHandler/);
+  assert.match(main, /cyber:export-sbom/);
 });
 
 test('renderer CSP blocks network connections, frames and plugin objects', () => {
@@ -53,6 +55,7 @@ test('preload exposes only explicit cyber operations', () => {
   assert.match(preload, /savePolicy/);
   assert.match(preload, /scanProject/);
   assert.match(preload, /exportReport/);
+  assert.match(preload, /exportSbom/);
   assert.doesNotMatch(preload, /require\(['"]node:fs/);
   assert.doesNotMatch(preload, /sendSync|executeJavaScript/);
 });
@@ -83,4 +86,10 @@ test('Windows CI builds and uploads the x64 desktop package', () => {
   assert.match(workflow, /SHA256SUMS\.txt/);
   assert.match(workflow, /Midad-Cyber-Windows-x64/);
   assert.match(workflow, /if-no-files-found: error/);
+});
+
+test('Electron entry scripts parse without syntax errors', () => {
+  for (const [name, source] of [['main', main], ['preload', preload], ['renderer', renderer]]) {
+    assert.doesNotThrow(() => new vm.Script(source, {filename: name + '.js'}), name);
+  }
 });
