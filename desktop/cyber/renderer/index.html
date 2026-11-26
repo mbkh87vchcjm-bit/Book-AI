@@ -7,6 +7,7 @@
   <meta name="color-scheme" content="dark">
   <title>مِداد Cyber — Windows</title>
   <link rel="stylesheet" href="styles.css">
+  <script defer src="../core/cyber-knowledge.js"></script>
   <script defer src="app.js"></script>
 </head>
 <body>
@@ -15,6 +16,7 @@
       <div class="brand"><span class="brand-mark">M</span><div><strong>مِداد Cyber</strong><small>بيئة تحليل محلية</small></div></div>
       <div class="sidebar-label">مساحة العمل</div>
       <button class="nav-button active" id="nav-dashboard"><span>◈</span> لوحة الفحص</button>
+      <button class="nav-button" id="nav-glossary"><span>⌘</span> قاموس المفاهيم</button>
       <button class="nav-button" id="nav-settings"><span>⚙</span> سياسات التحكم</button>
       <div class="sidebar-note">
         <span class="status-dot"></span>
@@ -51,6 +53,27 @@
         <section class="results-card">
           <div class="section-heading"><div><h2>نتائج التحليل</h2><p id="result-caption">ستظهر النتائج هنا بعد الفحص.</p></div><button class="button ghost" id="export-report" disabled>تصدير JSON</button></div>
           <div id="results" class="results-empty"><div class="empty-icon large">⌕</div><strong>لا توجد نتائج بعد</strong><span>اختر مجلداً ثم ابدأ الفحص.</span></div>
+        </section>
+      </section>
+
+
+      <section class="page hidden" id="glossary-page">
+        <div class="settings-intro"><div class="eyebrow">CYBER CONCEPT INTELLIGENCE</div><h2>قاموس يفهم السياق لا الكلمات وحدها</h2><p>ابحث عن مصطلح عربي أو إنجليزي. عند وجود أكثر من معنى، أضف سياق السؤال حتى لا يختار مِداد معنى غير صحيح.</p></div>
+        <section class="settings-card">
+          <div class="settings-title"><div><h3>تحديد معنى المصطلح</h3><p>مثال: Token له معانٍ مختلفة في الأمن والذكاء الاصطناعي والمترجمات.</p></div></div>
+          <label class="field">المصطلح<input id="concept-term" type="text" placeholder="مثال: Token أو Authentication"></label>
+          <label class="field">سياق الاستخدام (اختياري)<input id="concept-context" type="text" placeholder="مثال: API access and authentication"></label>
+          <div class="form-actions"><button class="button primary" type="button" id="resolve-concept">تحديد المفهوم</button></div>
+          <div id="concept-result" class="concept-result" aria-live="polite"><span class="muted">ستظهر هنا النتيجة والتعريف والتمييز.</span></div>
+        </section>
+        <section class="settings-card">
+          <div class="settings-title"><div><h3>مقارنة مفهومين</h3><p>المقارنة مبنية على سجل المفاهيم المحلي.</p></div></div>
+          <div class="settings-grid">
+            <label class="field">المفهوم الأول<input id="compare-first" type="text" placeholder="Authentication"></label>
+            <label class="field">المفهوم الثاني<input id="compare-second" type="text" placeholder="Authorization"></label>
+          </div>
+          <div class="form-actions"><button class="button primary" type="button" id="compare-concepts">قارن بين المفهومين</button></div>
+          <div id="comparison-result" class="concept-result" aria-live="polite"><span class="muted">ستظهر المقارنة هنا.</span></div>
         </section>
       </section>
 
