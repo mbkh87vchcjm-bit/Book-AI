@@ -54,3 +54,13 @@ A Windows CI job now installs the pinned Electron and electron-builder toolchain
 
 
 AST report metadata also records whether the parser was available, how many JavaScript / TypeScript files were parsed, and how many files had syntax parse failures. These counters do not include source snippets and are included in JSON exports.
+
+## Versioned cybersecurity knowledge references
+
+The local glossary contains bilingual concept entries linked to explicit source identifiers. The current baseline includes OWASP Top 10:2025 categories and OWASP ASVS 5.0.0, plus relevant OWASP Cheat Sheet Series pages for SQL injection and XSS. The glossary is an educational index, not a certification or a substitute for reading the complete standards. Reference URLs are displayed as text; the app's network access remains disabled.
+
+Official references:
+- OWASP Top 10:2025: https://top10.owasp.org/2025/
+- OWASP ASVS 5.0.0: https://asvs.owasp.org/
+- OWASP SQL Injection Prevention: https://cheatsheetseries.owasp.org/cheatsheets/SQL_Injection_Prevention_Cheat_Sheet.html
+- OWASP Cross Site Scripting Prevention: https://cheatsheetseries.owasp.org/cheatsheets/Cross_Site_Scripting_Prevention_Cheat_Sheet.html
