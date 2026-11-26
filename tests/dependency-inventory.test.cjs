@@ -109,7 +109,7 @@ test('Cargo manifest sections preserve runtime versus development scope hints', 
     'tempfile = "3.0"',
     '[build-dependencies]',
     'cc = "1.0"'
-  ].join('\\n'));
+  ].join('\n'));
   assert.ok(cargo.packages.some((pkg) => pkg.name === 'serde' && pkg.relationship === 'direct-runtime'));
   assert.ok(cargo.packages.some((pkg) => pkg.name === 'tempfile' && pkg.relationship === 'direct-development'));
   assert.ok(cargo.packages.some((pkg) => pkg.name === 'cc' && pkg.relationship === 'direct-development'));
@@ -119,13 +119,32 @@ test('lockfiles without an explicit runtime classification remain unknown', () =
   const yarn = Inventory.parseManifest('yarn.lock', [
     '"left-pad@^1.0.0":',
     '  version "1.3.0"'
-  ].join('\\n'));
+  ].join('\n'));
   assert.equal(yarn.packages[0].relationship, 'locked-unknown-scope');
 
   const cargo = Inventory.parseManifest('Cargo.lock', [
     '[[package]]',
     'name = "serde"',
     'version = "1.0.0"'
-  ].join('\\n'));
+  ].join('\n'));
   assert.equal(cargo.packages[0].relationship, 'locked-unknown-scope');
+});
+
+
+test('requirements development filenames and unknown lockfile scopes are preserved', () => {
+  const requirements = Inventory.parseManifest('requirements-dev.txt', 'pytest==8.0.0');
+  assert.equal(requirements.packages[0].relationship, 'direct-development');
+
+  const yarn = Inventory.parseManifest('yarn.lock', [
+    '"left-pad@^1.0.0":',
+    '  version "1.3.0"'
+  ].join('\n'));
+  assert.equal(yarn.packages[0].relationship, 'locked-unknown-scope');
+
+  const cargoLock = Inventory.parseManifest('Cargo.lock', [
+    '[[package]]',
+    'name = "serde"',
+    'version = "1.0.0"'
+  ].join('\n'));
+  assert.equal(cargoLock.packages[0].relationship, 'locked-unknown-scope');
 });
