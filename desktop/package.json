@@ -1,0 +1,14 @@
+{
+  "name": "midad-cyber-windows",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Windows-first local defensive cybersecurity workspace for Midad",
+  "main": "main.cjs",
+  "scripts": {
+    "start": "electron .",
+    "start:dev": "electron . --enable-logging"
+  },
+  "devDependencies": {
+    "electron": "45.5.0"
+  }
+}
