@@ -23,7 +23,7 @@ function normalize(value) {
 function includesPhrase(text, phrase) {
   const target = normalize(phrase);
   if (!target || target.length < 3) return false;
-  return (' ' + text + ' ').includes(' ' + target + ' ');
+  return text.includes(target);
 }
 
 function resolveConcepts(question, maximum) {
