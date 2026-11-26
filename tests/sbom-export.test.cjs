@@ -78,3 +78,30 @@ test('invalid versions are not mislabeled as exact package versions', () => {
   assert.equal(Sbom.isExactVersion('^4.18.0'), false);
   assert.equal(Sbom.isExactVersion('workspace:*'), false);
 });
+
+test('output uses the CycloneDX 1.7 schema field structure for its emitted subset', () => {
+  const bom = Sbom.createCycloneDxSbom(report);
+  const assertKeys = (object, allowed, label) => {
+    for (const key of Object.keys(object)) {
+      assert.ok(allowed.includes(key), label + ' has unexpected field: ' + key);
+    }
+  };
+  assert.equal(bom.$schema, 'http://cyclonedx.org/schema/bom-1.7.schema.json');
+  assertKeys(bom, ['$schema', 'bomFormat', 'specVersion', 'serialNumber', 'version', 'metadata', 'components'], 'BOM');
+  assertKeys(bom.metadata, ['timestamp', 'lifecycles', 'tools', 'component', 'properties'], 'metadata');
+  assert.deepEqual(bom.metadata.lifecycles, [{phase: 'pre-build'}]);
+  assertKeys(bom.metadata.tools, ['components'], 'metadata.tools');
+  assert.equal(bom.metadata.tools.components[0].type, 'application');
+  assert.equal(typeof bom.metadata.tools.components[0].name, 'string');
+  for (const component of bom.components) {
+    assert.equal(component.type, 'library');
+    assert.equal(typeof component.name, 'string');
+    assert.ok(['required', 'optional', 'excluded'].includes(component.scope));
+    assertKeys(component, ['type', 'bom-ref', 'name', 'scope', 'properties', 'version'], 'component');
+    for (const property of component.properties) {
+      assert.deepEqual(Object.keys(property).sort(), ['name', 'value']);
+      assert.equal(typeof property.name, 'string');
+      assert.equal(typeof property.value, 'string');
+    }
+  }
+});
