@@ -105,3 +105,24 @@ textarea { resize:vertical; direction:ltr; text-align:left; line-height:1.7; }
 .comparison-label { color:#9fc8f0; font-size:11px; background:#1b2b3d; }
 .comparison-grid p { color:#d3dfeb; }
 @media(max-width:720px) { .comparison-grid { grid-template-columns:1fr; } .comparison-grid > * { border-left:0; } }
+
+
+.dependency-inventory {
+  margin: 18px 0;
+  padding: 18px;
+  border: 1px solid rgba(120, 160, 190, .22);
+  border-radius: 14px;
+  background: rgba(18, 31, 46, .72);
+  overflow: hidden;
+}
+.dependency-inventory h3 { margin: 0 0 8px; }
+.dependency-inventory > p { margin: 6px 0 12px; }
+.dependency-table { width: 100%; border-collapse: collapse; display: block; overflow-x: auto; }
+.dependency-table th, .dependency-table td {
+  padding: 9px 12px;
+  border-bottom: 1px solid rgba(120, 160, 190, .14);
+  text-align: right;
+  white-space: nowrap;
+  font-size: .88rem;
+}
+.dependency-table th { color: var(--text-muted, #9aadc0); font-weight: 700; }

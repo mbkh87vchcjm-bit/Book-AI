@@ -37,3 +37,12 @@ The catalogue is a starting point, not a substitute for authoritative security r
 ## Tests
 
 Run npm test to execute the cyber policy and concept tests alongside the existing Midad test suite.
+
+
+## Phase 1.2 — Local dependency inventory
+
+The defensive scanner can now identify and inventory common dependency manifests and lockfiles without contacting package registries or executing project code. Initial formats include npm (package.json and package-lock), Yarn, pnpm, Python requirements / pyproject / Poetry lock, Composer, Cargo, Go modules, Bundler lockfiles, and Maven POM files.
+
+The inventory contains package names, declared or locked version text, relationship labels where available, and source manifest paths. It intentionally omits registry URLs, integrity hashes, and other lockfile metadata. This is an inventory feature only: it does not determine whether a package version is vulnerable, supported, malicious, or safe. That requires a separately maintained vulnerability-data source and explicit provenance, freshness, and licensing controls.
+
+The UI displays a bounded preview and JSON export retains a bounded inventory. Manifest parsing is performed from already-authorized, size-limited local files. No network lookups or package installation occur.

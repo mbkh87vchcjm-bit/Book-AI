@@ -118,6 +118,19 @@ ipcMain.handle('cyber:export-report', async (_event, report) => {
     totalBytes: Number(report.totalBytes) || 0,
     stoppedReason: report.stoppedReason || null,
     severitySummary: report.severitySummary || {},
+    dependencyInventory: report.dependencyInventory ? {
+      enabled: report.dependencyInventory.enabled === true,
+      manifestsScanned: Math.max(0, Number(report.dependencyInventory.manifestsScanned) || 0),
+      managers: Array.isArray(report.dependencyInventory.managers) ? report.dependencyInventory.managers.slice(0, 20).map((value) => String(value).slice(0, 40)) : [],
+      packageCount: Math.max(0, Number(report.dependencyInventory.packageCount) || 0),
+      truncated: report.dependencyInventory.truncated === true,
+      packages: Array.isArray(report.dependencyInventory.packages) ? report.dependencyInventory.packages.slice(0, 10000).map((pkg) => ({
+        name: String(pkg.name || '').slice(0, 160),
+        version: String(pkg.version || '').slice(0, 120),
+        relationship: String(pkg.relationship || '').slice(0, 40),
+        manifest: String(pkg.manifest || '').slice(0, 160)
+      })) : []
+    } : {enabled: false, manifestsScanned: 0, managers: [], packageCount: 0, truncated: false, packages: []},
     findings: report.findings.map((item) => ({
       id: String(item.id || ''),
       analyzer: String(item.analyzer || ''),

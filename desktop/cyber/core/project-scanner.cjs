@@ -3,6 +3,7 @@
 const fs = require('node:fs/promises');
 const path = require('node:path');
 const Policy = require('./cyber-policy.js');
+const DependencyInventory = require('./dependency-inventory.cjs');
 
 const SOURCE_EXTENSIONS = new Set([
   '.c', '.cc', '.cpp', '.cxx', '.h', '.hpp', '.cs', '.java',
@@ -24,7 +25,7 @@ function isWithin(root, target) {
 
 function isSourceFile(filePath) {
   const base = path.basename(filePath).toLowerCase();
-  return SOURCE_NAMES.has(base) || SOURCE_EXTENSIONS.has(path.extname(base));
+  return DependencyInventory.isManifestFile(filePath) || SOURCE_NAMES.has(base) || SOURCE_EXTENSIONS.has(path.extname(base));
 }
 
 function redactLine(line, matchedValue) {
@@ -136,6 +137,14 @@ async function scanProject(options) {
   let totalBytes = 0;
   let stoppedReason = null;
   const rules = makeRules();
+  const dependencyInventory = {
+    enabled: policy.analyzers.includes('dependency-audit'),
+    manifestsScanned: 0,
+    managers: [],
+    packageCount: 0,
+    packages: [],
+    truncated: false
+  };
 
   async function inspectFile(absolutePath, relativePath) {
     if (Date.now() - startedAt > policy.limits.timeoutMs) {
@@ -207,7 +216,27 @@ async function scanProject(options) {
       return;
     }
 
-    const lines = buffer.toString('utf8').split(/\r?\n/);
+    const text = buffer.toString('utf8');
+    if (dependencyInventory.enabled && DependencyInventory.isManifestFile(relativePath)) {
+      const authorized = Policy.authorizeAction('dependency-inventory', policy, {
+        path: relativePath, analyzer: 'dependency-audit'
+      });
+      if (authorized.allowed) {
+        try {
+          const parsed = DependencyInventory.parseManifest(relativePath, text);
+          if (parsed.recognized) {
+            dependencyInventory.manifestsScanned += 1;
+            if (!dependencyInventory.managers.includes(parsed.manager)) dependencyInventory.managers.push(parsed.manager);
+            dependencyInventory.packageCount += parsed.packageCount;
+            dependencyInventory.packages.push(...parsed.packages);
+            if (parsed.truncated) dependencyInventory.truncated = true;
+          }
+        } catch (_) {
+          warnings.push({code: 'dependency-manifest-invalid', path: relativePath});
+        }
+      }
+    }
+    const lines = text.split(/\r?\n/);
     scannedFiles += 1;
     totalBytes += buffer.length;
 
@@ -307,6 +336,14 @@ async function scanProject(options) {
     totalBytes,
     stoppedReason,
     severitySummary: summarize(filtered),
+    dependencyInventory: {
+      enabled: dependencyInventory.enabled,
+      manifestsScanned: dependencyInventory.manifestsScanned,
+      managers: dependencyInventory.managers,
+      packageCount: dependencyInventory.packageCount,
+      packages: dependencyInventory.packages.slice(0, 10000),
+      truncated: dependencyInventory.truncated || dependencyInventory.packages.length > 10000
+    },
     findings: filtered,
     warnings: warnings.slice(0, 100),
     execution: {localOnly: true, projectCodeExecuted: false, networkAccessUsed: false, filesModified: false}

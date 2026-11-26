@@ -49,12 +49,13 @@
       },
       analyzers: [
         ...($('analyzer-builtin').checked ? ['builtin'] : []),
-        ...($('analyzer-secrets').checked ? ['secret-patterns'] : [])
+        ...($('analyzer-secrets').checked ? ['secret-patterns'] : []),
+        ...($('analyzer-dependencies').checked ? ['dependency-audit'] : [])
       ],
       severityThreshold: $('severity').value,
       capabilities: {
         staticAnalysis: $('analyzer-builtin').checked,
-        dependencyInventory: base.capabilities.dependencyInventory,
+        dependencyInventory: $('analyzer-dependencies').checked,
         secretDetection: $('analyzer-secrets').checked,
         remediationSuggestions: base.capabilities.remediationSuggestions,
         applyRemediations: false,
@@ -82,6 +83,7 @@
     $('severity').value = policy.severityThreshold;
     $('analyzer-builtin').checked = policy.analyzers.includes('builtin');
     $('analyzer-secrets').checked = policy.analyzers.includes('secret-patterns');
+    $('analyzer-dependencies').checked = policy.analyzers.includes('dependency-audit');
     $('retain-snippets').checked = policy.privacy.retainSourceSnippets;
   }
 
@@ -137,6 +139,60 @@
     toast('تم تحديد مشروع ' + result.project);
   }
 
+  function renderDependencyInventory(inventory) {
+    const container = $('dependency-inventory');
+    container.replaceChildren();
+    if (!inventory || !inventory.enabled) {
+      container.classList.add('hidden');
+      return;
+    }
+    container.classList.remove('hidden');
+    const heading = document.createElement('h3');
+    heading.textContent = 'جرد الاعتماديات المحلي';
+    const summary = document.createElement('p');
+    summary.textContent = 'تم التعرف على ' + inventory.packageCount.toLocaleString('ar') +
+      ' مدخلاً في ' + inventory.manifestsScanned.toLocaleString('ar') +
+      ' ملف اعتماديات. الأنظمة: ' + (inventory.managers.join('، ') || 'لم يُحدد نظام حزم') + '.';
+    const note = document.createElement('p');
+    note.className = 'muted';
+    note.textContent = 'هذا جرد للأسماء والإصدارات أو القيود فقط، وليس فحصاً لوجود ثغرات. لم يتم الاتصال بمستودعات الحزم.';
+    container.append(heading, summary, note);
+    if (!inventory.packages.length) {
+      const empty = document.createElement('p');
+      empty.textContent = 'لم تُستخرج حزم من ملفات الاعتماديات المعروفة.';
+      container.appendChild(empty);
+      return;
+    }
+    const table = document.createElement('table');
+    table.className = 'dependency-table';
+    const head = document.createElement('thead');
+    const headerRow = document.createElement('tr');
+    ['الحزمة', 'الإصدار / القيد', 'العلاقة', 'الملف'].forEach((label) => {
+      const cell = document.createElement('th');
+      cell.textContent = label;
+      headerRow.appendChild(cell);
+    });
+    head.appendChild(headerRow);
+    const body = document.createElement('tbody');
+    inventory.packages.slice(0, 300).forEach((pkg) => {
+      const row = document.createElement('tr');
+      [pkg.name, pkg.version, pkg.relationship, pkg.manifest].forEach((value) => {
+        const cell = document.createElement('td');
+        cell.textContent = String(value || '');
+        row.appendChild(cell);
+      });
+      body.appendChild(row);
+    });
+    table.append(head, body);
+    container.appendChild(table);
+    if (inventory.truncated || inventory.packages.length > 300) {
+      const limitNote = document.createElement('p');
+      limitNote.className = 'muted';
+      limitNote.textContent = 'عُرض أول 300 مدخل فقط لحماية أداء الواجهة؛ التقرير الكامل يحتوي على بقية الجرد ضمن الحدود.';
+      container.appendChild(limitNote);
+    }
+  }
+
   function renderReport(report) {
     lastReport = report;
     $('export-report').disabled = false;
@@ -144,6 +200,7 @@
     $('metric-findings').textContent = report.findings.length.toLocaleString('ar');
     $('metric-high').textContent = (report.severitySummary.high + report.severitySummary.critical).toLocaleString('ar');
     $('metric-time').textContent = (report.durationMs / 1000).toFixed(2) + ' ث';
+    renderDependencyInventory(report.dependencyInventory);
 
     const resultList = $('results');
     resultList.replaceChildren();
