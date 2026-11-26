@@ -45,11 +45,20 @@ test('lockfile versions become versions while manifest constraints remain proper
     item.name === 'midad:declared-version-constraint' && item.value === '^5.0.0'));
 });
 
-test('development and optional dependency scopes are represented distinctly', () => {
+test('known dependency scopes are represented and unknown scopes remain unset', () => {
   const bom = Sbom.createCycloneDxSbom(report);
   assert.equal(bom.components.find((item) => item.name === 'typescript').scope, 'excluded');
   assert.equal(bom.components.find((item) => item.name === '@scope/tool').scope, 'optional');
   assert.equal(bom.components.find((item) => item.name === 'express').scope, 'required');
+
+  const uncertain = structuredClone(report);
+  uncertain.dependencyInventory.packages.push({
+    name: 'yarn-only-package', version: '1.0.0',
+    relationship: 'locked-unknown-scope', manifest: 'yarn.lock'
+  });
+  const uncertainBom = Sbom.createCycloneDxSbom(uncertain);
+  assert.equal(uncertainBom.components.find((item) => item.name === 'yarn-only-package').scope, undefined);
+  assert.equal(Sbom.componentScope('locked-unknown-scope'), null);
 });
 
 test('component references are unique and sensitive registry metadata is not emitted', () => {
@@ -96,7 +105,7 @@ test('output uses the CycloneDX 1.7 schema field structure for its emitted subse
   for (const component of bom.components) {
     assert.equal(component.type, 'library');
     assert.equal(typeof component.name, 'string');
-    assert.ok(['required', 'optional', 'excluded'].includes(component.scope));
+    if (component.scope !== undefined) assert.ok(['required', 'optional', 'excluded'].includes(component.scope));
     assertKeys(component, ['type', 'bom-ref', 'name', 'scope', 'properties', 'version'], 'component');
     for (const property of component.properties) {
       assert.deepEqual(Object.keys(property).sort(), ['name', 'value']);
