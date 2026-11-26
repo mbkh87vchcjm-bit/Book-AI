@@ -56,3 +56,8 @@ npm run dist:win
 Build output is written to desktop/release/. The installer is intentionally unsigned in this development phase. Windows may display a publisher or SmartScreen warning because no production code-signing certificate has been configured. Do not treat an unsigned development artifact as a verified public release.
 
 The CI workflow builds on a Windows runner; Linux CI does not cross-compile this Windows package. The installer must still be exercised on a clean Windows 11 account and a second Windows 10/11 environment before release.
+
+
+### Structural JavaScript / TypeScript analysis
+
+The desktop package embeds the pinned @babel/parser runtime dependency and enables a local AST-based review for JavaScript, JSX, TypeScript, and TSX files. It identifies selected structural patterns such as dynamic evaluation, dynamic HTML assignment, and request-derived SQL string construction. Parsing builds a syntax tree only and does not execute source code. Parse failures and node limits become bounded warnings. These findings are heuristic indicators, not proof of exploitability.
