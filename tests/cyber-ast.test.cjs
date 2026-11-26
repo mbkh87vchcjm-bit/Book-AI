@@ -70,7 +70,7 @@ test('scanner respects the selected AST analyzer and path scope', async (t) => {
 test('AST findings replace overlapping text heuristics when both analyzers are enabled', async (t) => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'midad-ast-dedupe-test-'));
   t.after(() => fs.rm(root, {recursive: true, force: true}));
-  await fs.writeFile(path.join(root, 'app.js'), 'eval(userInput);\\n', 'utf8');
+  await fs.writeFile(path.join(root, 'app.js'), 'eval(userInput);\n', 'utf8');
   const report = await Scanner.scanProject({
     root,
     policy: Policy.createPolicy({analyzers: ['builtin', 'ast']})
