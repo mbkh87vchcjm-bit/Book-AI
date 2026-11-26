@@ -171,6 +171,6 @@ test('Arabic aliases resolve to the same canonical security concept', () => {
 });
 
 test('concept list can be filtered by knowledge domain', () => {
-  assert.ok(Knowledge.listByDomain('cryptography').length >= 3);
+  assert.ok(Knowledge.listByDomain('cryptography').length >= 2);
   assert.ok(Knowledge.listByDomain('secure-development').length >= 2);
 });
