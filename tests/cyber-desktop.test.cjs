@@ -79,6 +79,8 @@ test('Windows CI builds and uploads the x64 desktop package', () => {
   assert.match(workflow, /windows-desktop:/);
   assert.match(workflow, /runs-on: windows-2022/);
   assert.match(workflow, /npm run dist:win/);
+  assert.match(workflow, /Generate SHA-256 checksums/);
+  assert.match(workflow, /SHA256SUMS\\.txt/);
   assert.match(workflow, /Midad-Cyber-Windows-x64/);
   assert.match(workflow, /if-no-files-found: error/);
 });
