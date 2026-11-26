@@ -222,7 +222,37 @@
       definition:'وثيقة توعوية تصنف مجموعة من أهم مخاطر تطبيقات الويب وتساعد فرق التطوير على توجيه جهود الحماية.',
       distinction:'ليست معيار اختبار تفصيليًا ولا شهادة بأن التطبيق آمن؛ لا تغني عن متطلبات تحقق شاملة.',
       example:'استخدام فئات OWASP Top 10:2025 لتنظيم جلسة مراجعة مخاطر التصميم والكود.',
-      contrastsWith:['SEC-ASVS-001'],related:['SEC-BAC-001','SEC-SUPPLY-CHAIN-001'],sources:['OWASP-TOP10-2025']}
+      contrastsWith:['SEC-ASVS-001'],related:['SEC-BAC-001','SEC-SUPPLY-CHAIN-001'],sources:['OWASP-TOP10-2025']},
+    {id:'SEC-XSS-001',term:'Cross-Site Scripting (XSS)',ar:'البرمجة النصية عبر المواقع',domain:'application-security',
+      aliases:['xss','cross site scripting','حقن الشيفرات في صفحات الويب'],
+      definition:'ضعف يسمح بوصول محتوى غير موثوق إلى سياق صفحة ويب بحيث يفسره المتصفح كمحتوى نشط بدلاً من عرضه كنص آمن.',
+      distinction:'XSS يتعلق بتعامل المتصفح مع محتوى الصفحة؛ أما CSRF فيتعلق بإرسال طلب غير مقصود ضمن جلسة موثقة.',
+      example:'مراجعة طريقة عرض تعليقات المستخدمين، واستخدام textContent أو تعقيم موثوق عند الحاجة إلى HTML.',
+      contrastsWith:['SEC-CSRF-001','SEC-SQLI-001'],related:['SEC-SAST-001','SEC-CSRF-001'],sources:['OWASP-TOP10-2025-A05','OWASP-XSS-CHEATSHEET','OWASP-ASVS-5.0.0']},
+    {id:'SEC-SESSION-001',term:'Session Management',ar:'إدارة الجلسات',domain:'identity-security',
+      aliases:['session security','session handling','إدارة جلسة المستخدم'],
+      definition:'ضوابط إنشاء جلسة المستخدم وتحديثها وحمايتها وانتهائها وإبطالها أثناء استخدام التطبيق.',
+      distinction:'نجاح تسجيل الدخول لا يكفي؛ يجب حماية معرّف الجلسة وضبط مدة صلاحيتها وإبطالها عند الحاجة.',
+      example:'مراجعة انتهاء الجلسة بعد تسجيل الخروج وتغيير كلمة المرور.',
+      contrastsWith:['SEC-AUTHN-001'],related:['SEC-MFA-001','SEC-CSRF-001'],sources:['OWASP-ASVS-5.0.0','OWASP-TOP10-2025-A07']},
+    {id:'SEC-MFA-001',term:'Multi-Factor Authentication',ar:'المصادقة متعددة العوامل',domain:'identity-security',
+      aliases:['mfa','two factor authentication','2fa','التحقق بخطوتين'],
+      definition:'التحقق من الهوية باستخدام عاملين أو أكثر من فئات مستقلة مثل شيء يعرفه المستخدم وشيء يملكه أو سمة حيوية.',
+      distinction:'عاملان من الفئة نفسها لا يساويان بالضرورة عاملين مستقلين؛ كلمة مرور ورقم PIN مثالان من فئة المعرفة.',
+      example:'مراجعة دعم عامل تحقق إضافي مع حماية إجراءات الاسترداد.',
+      contrastsWith:['SEC-AUTHZ-001'],related:['SEC-AUTHN-001','SEC-SESSION-001'],sources:['OWASP-ASVS-5.0.0','OWASP-TOP10-2025-A07']},
+    {id:'SEC-RBAC-001',term:'Role-Based Access Control',ar:'التحكم بالوصول القائم على الأدوار',domain:'identity-security',
+      aliases:['rbac','role based access control','صلاحيات حسب الدور'],
+      definition:'نموذج صلاحيات تُربط فيه الأذونات بأدوار وظيفية، ثم تُسند الأدوار إلى المستخدمين.',
+      distinction:'الدور يجمع الأذونات؛ لكن التطبيق يظل مطالباً بالتحقق من صلاحية المورد المحدد في كل طلب.',
+      example:'مراجعة أن دور الطالب لا يستطيع تنفيذ إجراء مخصص لدور المشرف.',
+      contrastsWith:['SEC-AUTHN-001'],related:['SEC-AUTHZ-001','SEC-BAC-001'],sources:['OWASP-ASVS-5.0.0','OWASP-TOP10-2025-A01']},
+    {id:'SEC-INPUT-001',term:'Input Validation',ar:'التحقق من صحة المدخلات',domain:'secure-development',
+      aliases:['input validation','validate input','التحقق من المدخلات'],
+      definition:'فحص المدخلات وفق قواعد متوقعة لنوعها وطولها وصيغتها ونطاق قيمها قبل استخدامها.',
+      distinction:'التحقق من المدخلات لا يغني وحده عن ترميز المخرجات أو الاستعلامات المجهزة؛ كل سياق يحتاج ضابطه.',
+      example:'التحقق من أن رقم الصفحة عدد صحيح ضمن نطاق مسموح قبل استخدامه.',
+      contrastsWith:['SEC-ENCODING-001'],related:['SEC-SQLI-001','SEC-XSS-001'],sources:['OWASP-ASVS-5.0.0','OWASP-INJECTION-CHEATSHEET']}
   ];
   var SOURCES = {
     'OWASP-TOP10-2025-A01': {title:'OWASP Top 10:2025 A01 — Broken Access Control',version:'2025',url:'https://top10.owasp.org/2025/'},
@@ -239,7 +269,8 @@
     'OWASP-ASVS-5.0.0': {title:'OWASP Application Security Verification Standard',version:'5.0.0',url:'https://asvs.owasp.org/'},
     'OWASP-CHEATSHEETS': {title:'OWASP Cheat Sheet Series',version:'online edition',url:'https://cheatsheetseries.owasp.org/'},
     'OWASP-SQL-INJECTION-CHEATSHEET': {title:'SQL Injection Prevention Cheat Sheet',version:'online edition',url:'https://cheatsheetseries.owasp.org/cheatsheets/SQL_Injection_Prevention_Cheat_Sheet.html'},
-    'OWASP-XSS-CHEATSHEET': {title:'Cross Site Scripting Prevention Cheat Sheet',version:'online edition',url:'https://cheatsheetseries.owasp.org/cheatsheets/Cross_Site_Scripting_Prevention_Cheat_Sheet.html'}
+    'OWASP-XSS-CHEATSHEET': {title:'Cross Site Scripting Prevention Cheat Sheet',version:'online edition',url:'https://cheatsheetseries.owasp.org/cheatsheets/Cross_Site_Scripting_Prevention_Cheat_Sheet.html'},
+    'OWASP-INJECTION-CHEATSHEET': {title:'Injection Prevention Cheat Sheet',version:'online edition',url:'https://cheatsheetseries.owasp.org/cheatsheets/Injection_Prevention_Cheat_Sheet.html'}
   };
 
   function contextTokens(context) {
