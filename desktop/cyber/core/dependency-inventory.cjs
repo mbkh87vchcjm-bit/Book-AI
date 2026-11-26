@@ -82,6 +82,13 @@ function parseNpmManifest(text) {
   return result;
 }
 
+function npmLockRelationship(pkg, fallback) {
+  if (pkg && pkg.dev) return 'locked-development';
+  if (pkg && pkg.devOptional) return 'locked-development-optional';
+  if (pkg && pkg.optional) return 'locked-optional';
+  return fallback;
+}
+
 function parseNpmLock(text) {
   const data = JSON.parse(text);
   const result = [];
@@ -94,14 +101,15 @@ function parseNpmLock(text) {
       const name = locator.slice(index + marker.length);
       if (!name || name.includes('/node_modules/')) continue;
       const firstIndex = locator.indexOf(marker);
-      const relationship = firstIndex === index ? 'direct-or-top-level-lock' : 'transitive';
-      result.push(entry(name, pkg.version, relationship, 'package-lock.json'));
+      const fallback = firstIndex === index ? 'direct-or-top-level-lock' : 'transitive';
+      result.push(entry(name, pkg.version, npmLockRelationship(pkg, fallback), 'package-lock.json'));
     }
   } else if (data && data.dependencies && typeof data.dependencies === 'object') {
     const visit = (dependencies, depth) => {
       for (const [name, pkg] of Object.entries(dependencies || {})) {
         if (!pkg || typeof pkg !== 'object') continue;
-        result.push(entry(name, pkg.version, depth === 0 ? 'direct-or-top-level-lock' : 'transitive', 'package-lock.json'));
+        const fallback = depth === 0 ? 'direct-or-top-level-lock' : 'transitive';
+        result.push(entry(name, pkg.version, npmLockRelationship(pkg, fallback), 'package-lock.json'));
         if (pkg.dependencies && typeof pkg.dependencies === 'object') visit(pkg.dependencies, depth + 1);
       }
     };
@@ -134,7 +142,7 @@ function parseYarnLock(text) {
     }
     if (current && /^\s+version\s+["']([^"']+)["']/.test(line)) {
       current.version = line.match(/^\s+version\s+["']([^"']+)["']/)[1];
-      result.push(entry(current.name, current.version, 'locked', 'yarn.lock'));
+      result.push(entry(current.name, current.version, 'locked-unknown-scope', 'yarn.lock'));
       current = null;
     }
   }
@@ -155,19 +163,22 @@ function parsePnpmLock(text) {
     if (separator <= 0) continue;
     let version = raw.slice(separator + 1);
     version = version.replace(/\([^)]*\)$/, '');
-    result.push(entry(raw.slice(0, separator), version, 'locked', 'pnpm-lock.yaml'));
+    result.push(entry(raw.slice(0, separator), version, 'locked-unknown-scope', 'pnpm-lock.yaml'));
   }
   return result;
 }
 
-function parseRequirements(text) {
+function parseRequirements(text, filePath) {
   const result = [];
+  const baseName = path.basename(String(filePath || '')).toLowerCase();
+  const developmentFile = /(?:^|[-_.])(?:dev|development|test|testing)(?:[-_.]|$)/.test(baseName);
+  const relationship = developmentFile ? 'direct-development' : 'direct-or-declared';
   for (const rawLine of text.split(/\r?\n/)) {
     const line = rawLine.replace(/\s+#.*$/, '').trim();
     if (!line || line.startsWith('#') || line.startsWith('-') || line.startsWith('git+')) continue;
     const match = line.match(/^([A-Za-z0-9][A-Za-z0-9_.-]*)(?:\[[^\]]+\])?\s*(.*)$/);
     if (!match) continue;
-    result.push(entry(match[1], match[2] || 'unspecified', 'direct-or-declared', 'requirements.txt'));
+    result.push(entry(match[1], match[2] || 'unspecified', relationship, path.basename(String(filePath || 'requirements.txt'))));
   }
   return result;
 }
@@ -201,7 +212,16 @@ function parsePoetryLock(text) {
   for (const block of blocks) {
     const name = block.match(/^\s*name\s*=\s*"([^"]+)"/m);
     const version = block.match(/^\s*version\s*=\s*"([^"]+)"/m);
-    if (name) result.push(entry(name[1], version && version[1], 'locked', 'poetry.lock'));
+    if (name) {
+      const groups = block.match(/^\s*groups\s*=\s*\[([^\]]*)\]/m);
+      const category = block.match(/^\s*category\s*=\s*"([^"]+)"/m);
+      const groupText = groups ? groups[1].toLowerCase() : '';
+      let relationship = 'locked-unknown-scope';
+      if (/\bmain\b/.test(groupText) || (category && category[1].toLowerCase() === 'main')) relationship = 'locked-runtime';
+      else if (/\b(dev|test|docs|development)\b/.test(groupText) ||
+          (category && /^(dev|test|development)$/.test(category[1].toLowerCase()))) relationship = 'locked-development';
+      result.push(entry(name[1], version && version[1], relationship, 'poetry.lock'));
+    }
   }
   return result;
 }
@@ -222,7 +242,7 @@ function parseComposerManifest(text) {
 function parseComposerLock(text) {
   const data = JSON.parse(text);
   const result = [];
-  for (const [field, relationship] of [['packages', 'locked'], ['packages-dev', 'locked-development']]) {
+  for (const [field, relationship] of [['packages', 'locked-runtime'], ['packages-dev', 'locked-development']]) {
     for (const pkg of Array.isArray(data && data[field]) ? data[field] : []) {
       result.push(entry(pkg.name, pkg.version, relationship, 'composer.lock'));
     }
@@ -232,13 +252,19 @@ function parseComposerLock(text) {
 
 function parseCargoManifest(text) {
   const result = [];
-  let inDependencies = false;
+  let relationship = null;
   for (const line of text.split(/\r?\n/)) {
     const section = line.match(/^\s*\[([^\]]+)\]\s*$/);
-    if (section) { inDependencies = /^(?:dev-|build-)?dependencies$/.test(section[1]); continue; }
-    if (!inDependencies) continue;
+    if (section) {
+      const name = section[1];
+      if (name === 'dependencies') relationship = 'direct-runtime';
+      else if (name === 'dev-dependencies' || name === 'build-dependencies') relationship = 'direct-development';
+      else relationship = null;
+      continue;
+    }
+    if (!relationship) continue;
     const match = line.match(/^\s*([A-Za-z0-9_.-]+)\s*=\s*(?:"([^"]+)"|\{[^}]*version\s*=\s*"([^"]+)")/);
-    if (match) result.push(entry(match[1], match[2] || match[3], 'direct-or-declared', 'Cargo.toml'));
+    if (match) result.push(entry(match[1], match[2] || match[3], relationship, 'Cargo.toml'));
   }
   return result;
 }
@@ -249,7 +275,7 @@ function parseCargoLock(text) {
   for (const block of blocks) {
     const name = block.match(/^\s*name\s*=\s*"([^"]+)"/m);
     const version = block.match(/^\s*version\s*=\s*"([^"]+)"/m);
-    if (name) result.push(entry(name[1], version && version[1], 'locked', 'Cargo.lock'));
+    if (name) result.push(entry(name[1], version && version[1], 'locked-unknown-scope', 'Cargo.lock'));
   }
   return result;
 }
@@ -276,7 +302,7 @@ function parseGemLock(text) {
   for (const line of text.split(/\r?\n/)) {
     if (/^    [^\s].*\s\([^)]*\)\s*$/.test(line) && inSpecs) {
       const match = line.match(/^    ([^\s]+)\s+\(([^)]+)\)/);
-      if (match) result.push(entry(match[1], match[2], 'locked', 'Gemfile.lock'));
+      if (match) result.push(entry(match[1], match[2], 'locked-unknown-scope', 'Gemfile.lock'));
     }
     if (/^DEPENDENCIES\s*$/.test(line)) inSpecs = false;
     if (/^  specs\s*$/.test(line)) inSpecs = true;
@@ -311,7 +337,7 @@ function parseManifest(filePath, text) {
     case 'npm-lock': manager = 'npm'; packages = parseNpmLock(text); break;
     case 'yarn-lock': manager = 'yarn'; packages = parseYarnLock(text); break;
     case 'pnpm-lock': manager = 'pnpm'; packages = parsePnpmLock(text); break;
-    case 'pip-requirements': manager = 'pip'; packages = parseRequirements(text); break;
+    case 'pip-requirements': manager = 'pip'; packages = parseRequirements(text, filePath); break;
     case 'pyproject': manager = 'python'; packages = parsePyProject(text); break;
     case 'poetry-lock': manager = 'poetry'; packages = parsePoetryLock(text); break;
     case 'composer-manifest': manager = 'composer'; packages = parseComposerManifest(text); break;
