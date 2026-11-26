@@ -198,6 +198,7 @@
   function renderReport(report) {
     lastReport = report;
     $('export-report').disabled = false;
+    $('export-sbom').disabled = !(report.dependencyInventory && report.dependencyInventory.enabled && report.dependencyInventory.packages && report.dependencyInventory.packages.length);
     $('metric-files').textContent = report.scannedFiles.toLocaleString('ar');
     $('metric-findings').textContent = report.findings.length.toLocaleString('ar');
     $('metric-high').textContent = (report.severitySummary.high + report.severitySummary.critical).toLocaleString('ar');
@@ -263,6 +264,9 @@
   async function runScan() {
     $('run-scan').disabled = true;
     $('project-state').textContent = 'جارٍ فحص الملفات محلياً…';
+    lastReport = null;
+    $('export-report').disabled = true;
+    $('export-sbom').disabled = true;
     $('results').replaceChildren();
     const loading = document.createElement('div');
     loading.className = 'results-empty';
@@ -290,6 +294,21 @@
     const result = await api.exportReport(lastReport);
     if (result.ok) toast('تم حفظ التقرير في المكان الذي اخترته.');
     else if (!result.canceled) toast('تعذر حفظ التقرير.');
+  }
+
+  async function exportSbom() {
+    const inventory = lastReport && lastReport.dependencyInventory;
+    if (!inventory || !inventory.enabled || !inventory.packages || inventory.packages.length === 0) {
+      toast('فعّل جرد الاعتماديات ونفّذ الفحص أولاً.');
+      return;
+    }
+    try {
+      const result = await api.exportSbom(lastReport);
+      if (result.ok) toast('تم تصدير CycloneDX 1.7 بعدد ' + result.componentCount + ' مكوّناً.');
+      else if (!result.canceled) toast('تعذر تصدير SBOM.');
+    } catch (_) {
+      toast('تعذر تصدير SBOM.');
+    }
   }
 
 
@@ -406,6 +425,7 @@
     $('choose-project').addEventListener('click', chooseProject);
     $('run-scan').addEventListener('click', runScan);
     $('export-report').addEventListener('click', exportReport);
+    $('export-sbom').addEventListener('click', exportSbom);
     $('policy-form').addEventListener('submit', savePolicy);
     $('nav-dashboard').addEventListener('click', () => showPage('dashboard'));
     $('nav-glossary').addEventListener('click', () => showPage('glossary'));
