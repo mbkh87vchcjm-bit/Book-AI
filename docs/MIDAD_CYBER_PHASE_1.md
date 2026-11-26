@@ -9,9 +9,9 @@ The policy module lets the user configure:
 - Local project scope through relative-path allowlists and exclusions.
 - Maximum file count, per-file size, total scan size, findings, and timeout.
 - Enabled defensive analyzers and minimum finding severity.
-- Whether remediation suggestions are enabled and whether applying a remediation is enabled.
+- Whether non-mutating remediation suggestions are enabled. File-changing remediation is not implemented and cannot be enabled in this phase.
 
-The default profile is read-only, local-only, and does not apply changes automatically. Suggestions are non-mutating. Applying a change requires review mode, the apply-remediation capability, and explicit per-change approval.
+The default profile is read-only and local-only. Suggestions are non-mutating. No code in this phase writes changes to project files; the apply-remediation capability is hard-disabled. A future remediation workflow must use a reviewable patch preview and explicit approval rather than silently editing source files.
 
 ## Fixed guardrails
 
@@ -70,7 +70,7 @@ The glossary also includes XSS, CSRF, IDOR/BOLA, SSRF, session management, MFA, 
 
 ## Phase 1.3 — Partial CycloneDX SBOM
 
-The dependency inventory can now be exported as CycloneDX 1.7 JSON. The document identifies itself as a partial, pre-build manifest inventory. Exact versions are separated from version constraints. Optional and development scopes are preserved when supported by manifest or lockfile evidence; unknown scope remains unset rather than being guessed. When a locked package and a declaration refer to the same package, the locked version takes precedence and the declaration constraint is retained as metadata. Source manifest paths are retained as local metadata. The exporter omits registry URLs, integrity hashes, and download metadata.
+The dependency inventory can now be exported as CycloneDX 1.7 JSON. The document identifies itself as a partial, pre-build manifest inventory. Exact versions are separated from version constraints. Optional and development scopes are preserved when supported by manifest or lockfile evidence; unknown scope remains unset rather than being guessed. A manifest declaration is linked to a locked component only when the declared version matches the locked version exactly. Unmatched exact pins and ranges remain separate declaration components with an explicit resolution-status property; no SemVer range is assumed to match without validation. Source manifest paths are retained as local metadata. The exporter omits registry URLs, integrity hashes, and download metadata.
 
 This is not a complete SBOM or SCA result. Full dependency relationships are not resolved, no PURLs or cryptographic component hashes are generated, license identification is not implemented, and no CVE feed is consulted. The app remains offline. Export handlers use the latest report retained by the Electron main process; renderer-supplied report objects are not accepted. The export must not be described as proof of safety or of vulnerability absence.
 
