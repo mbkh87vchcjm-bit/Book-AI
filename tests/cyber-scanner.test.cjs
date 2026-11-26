@@ -145,3 +145,44 @@ test('severity filtering happens before the maximum finding count', async (t) =>
   assert.equal(report.findings[0].severity, 'high');
   assert.equal(report.stoppedReason, 'max-findings-exceeded');
 });
+
+test('scanner bounds directory depth before recursing into deeply nested trees', async (t) => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'midad-cyber-depth-test-'));
+  t.after(() => fs.rm(root, {recursive: true, force: true}));
+  let nested = root;
+  for (let index = 0; index < 70; index += 1) {
+    nested = path.join(nested, 'd' + index);
+    await fs.mkdir(nested);
+  }
+  await fs.writeFile(path.join(nested, 'deep.js'), 'eval(userInput);\\n', 'utf8');
+  const report = await Scanner.scanProject({
+    root,
+    policy: Policy.createPolicy({analyzers: ['builtin'], scope: {allowedPaths: ['.'], excludedPaths: []}})
+  });
+  assert.equal(report.ok, true);
+  assert.equal(report.scannedFiles, 0);
+  assert.ok(report.warnings.some((item) => item.code === 'max-directory-depth-exceeded'));
+});
+
+test('scanner rejects a directory junction that resolves outside the selected root', async (t) => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'midad-cyber-junction-root-'));
+  const outside = await fs.mkdtemp(path.join(os.tmpdir(), 'midad-cyber-junction-outside-'));
+  t.after(async () => {
+    await fs.rm(root, {recursive: true, force: true});
+    await fs.rm(outside, {recursive: true, force: true});
+  });
+  await fs.writeFile(path.join(outside, 'outside.js'), 'eval(userInput);\\n', 'utf8');
+  try {
+    await fs.symlink(outside, path.join(root, 'junction'), 'junction');
+  } catch (error) {
+    if (process.platform === 'win32') return t.skip('Junction creation unavailable on this runner');
+    throw error;
+  }
+  const report = await Scanner.scanProject({
+    root,
+    policy: Policy.createPolicy({analyzers: ['builtin']})
+  });
+  assert.equal(report.ok, true);
+  assert.equal(report.scannedFiles, 0);
+  assert.ok(!report.findings.some((item) => item.file.includes('junction')));
+});
