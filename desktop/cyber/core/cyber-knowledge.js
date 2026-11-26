@@ -262,13 +262,13 @@
       var phrase = names.some(function (name) {
         return name.length >= 3 && (' ' + query + ' ').indexOf(' ' + name + ' ') >= 0;
       });
-      if (exact || phrase) matches.push({concept: concept, score: (exact ? 1 : 0.75) + contextScore(concept, tokens)});
+      if (exact || phrase) matches.push({concept: concept, exact: exact, score: (exact ? 1 : 0.75) + contextScore(concept, tokens)});
     });
     matches.sort(function (a, b) { return b.score - a.score || a.concept.id.localeCompare(b.concept.id); });
     if (!matches.length) return {status: 'not-found', matches: []};
     if (matches.length > 1) {
       var top = matches[0], second = matches[1];
-      if (!tokens.length || top.score - second.score < 0.12) {
+      if ((!tokens.length && !(top.exact && !second.exact)) || top.score - second.score < 0.12) {
         return {status: 'ambiguous', matches: matches.map(function (item) { return item.concept; })};
       }
     }
