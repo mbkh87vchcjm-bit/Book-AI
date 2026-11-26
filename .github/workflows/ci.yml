@@ -93,8 +93,8 @@ jobs:
         shell: pwsh
         run: |
           $files = Get-ChildItem .\release\*.exe
-          if ($files.Count -ne 2) { throw \"Expected installer and portable EXE; found $($files.Count)\" }
-          $lines = $files | Get-FileHash -Algorithm SHA256 | ForEach-Object { \"$($_.Hash)  $([System.IO.Path]::GetFileName($_.Path))\" }
+          if ($files.Count -ne 2) { throw ('Expected installer and portable EXE; found ' + $files.Count) }
+          $lines = $files | Get-FileHash -Algorithm SHA256 | ForEach-Object { '{0}  {1}' -f $_.Hash, [System.IO.Path]::GetFileName($_.Path) }
           $lines | Set-Content .\release\SHA256SUMS.txt -Encoding ascii
           Get-Content .\release\SHA256SUMS.txt
 
