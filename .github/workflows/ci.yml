@@ -80,6 +80,14 @@ jobs:
         working-directory: desktop
         run: npm run electron:version
 
+      - name: Syntax-check Electron entry points
+        working-directory: desktop
+        run: |
+          node --check main.cjs
+          node --check preload.cjs
+          node --check cyber/renderer/app.js
+          node --check cyber/core/sbom-export.cjs
+
       - name: Run desktop cyber parser and inventory tests
         working-directory: desktop
         run: npm run test:cyber
