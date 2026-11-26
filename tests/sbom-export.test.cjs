@@ -31,19 +31,22 @@ test('exports a CycloneDX 1.7 pre-build SBOM with UUID serial number', () => {
   assert.match(bom.serialNumber, /^urn:uuid:/);
   assert.equal(bom.metadata.lifecycles[0].phase, 'pre-build');
   assert.equal(bom.metadata.component.name, 'Example Project');
-  assert.equal(bom.components.length, 3);
+  assert.equal(bom.components.length, 4);
 });
 
-test('lockfile versions become versions while manifest constraints remain properties', () => {
+test('lockfile versions are not linked to unmatched manifest versions by name alone', () => {
   const bom = Sbom.createCycloneDxSbom(report, {
     serialNumber: 'urn:uuid:3e671687-395b-41f5-a30f-a58921a69b79'
   });
-  const express = bom.components.find((item) => item.name === 'express');
+  const expressLocked = bom.components.find((item) => item.name === 'express' && item.version === '4.18.2');
+  const expressDeclared = bom.components.find((item) => item.name === 'express' && !item.version);
   const typescript = bom.components.find((item) => item.name === 'typescript');
-  assert.equal(express.version, '4.18.2');
-  assert.equal(bom.components.filter((item) => item.name === 'express').length, 1);
-  assert.ok(express.properties.some((item) =>
+  assert.equal(expressLocked.version, '4.18.2');
+  assert.equal(bom.components.filter((item) => item.name === 'express').length, 2);
+  assert.ok(expressDeclared.properties.some((item) =>
     item.name === 'midad:declared-version-constraint' && item.value === '4.18.0'));
+  assert.ok(expressDeclared.properties.some((item) =>
+    item.name === 'midad:resolution-status' && item.value === 'declared-exact-version-not-found-in-lockfile'));
   assert.ok(express.properties.some((item) =>
     item.name === 'midad:relationship' && item.value === 'direct-runtime'));
   assert.equal(typescript.version, undefined);
@@ -55,7 +58,9 @@ test('known dependency scopes are represented and unknown scopes remain unset', 
   const bom = Sbom.createCycloneDxSbom(report);
   assert.equal(bom.components.find((item) => item.name === 'typescript').scope, 'excluded');
   assert.equal(bom.components.find((item) => item.name === '@scope/tool').scope, 'optional');
-  assert.equal(bom.components.find((item) => item.name === 'express').scope, 'required');
+  const expressDeclaration = bom.components.find((item) => item.name === 'express' &&
+    item.properties.some((property) => property.name === 'midad:source-manifest' && property.value === 'package.json'));
+  assert.equal(expressDeclaration.scope, 'required');
 
   const uncertain = structuredClone(report);
   uncertain.dependencyInventory.packages.push({
@@ -130,12 +135,17 @@ test('ambiguous manifest constraints are not attached to multiple locked version
   );
   const bom = Sbom.createCycloneDxSbom(multi);
   const expressions = bom.components.filter((item) => item.name === 'express');
-  assert.equal(expressions.length, 3);
+  assert.equal(expressions.length, 4);
   const ambiguous = expressions.find((item) =>
-    item.properties.some((property) => property.name === 'midad:resolution-status'));
+    item.properties.some((property) => property.name === 'midad:resolution-status' &&
+      property.value === 'ambiguous-lockfile-version-match'));
   assert.ok(ambiguous);
   assert.ok(ambiguous.properties.some((property) =>
     property.name === 'midad:declared-version-constraint' && property.value === '^4.0.0'));
+  const unmatchedPin = expressions.find((item) =>
+    item.properties.some((property) => property.name === 'midad:declared-version-constraint' && property.value === '4.18.0'));
+  assert.ok(unmatchedPin.properties.some((property) =>
+    property.name === 'midad:resolution-status' && property.value === 'declared-exact-version-not-found-in-lockfile'));
   for (const locked of expressions.filter((item) => item.version)) {
     assert.ok(!locked.properties.some((property) =>
       property.name === 'midad:declared-version-constraint' && property.value === '^4.0.0'));
