@@ -49,12 +49,13 @@
       },
       analyzers: [
         ...($('analyzer-builtin').checked ? ['builtin'] : []),
+        ...($('analyzer-ast').checked ? ['ast'] : []),
         ...($('analyzer-secrets').checked ? ['secret-patterns'] : []),
         ...($('analyzer-dependencies').checked ? ['dependency-audit'] : [])
       ],
       severityThreshold: $('severity').value,
       capabilities: {
-        staticAnalysis: $('analyzer-builtin').checked,
+        staticAnalysis: $('analyzer-builtin').checked || $('analyzer-ast').checked,
         dependencyInventory: $('analyzer-dependencies').checked,
         secretDetection: $('analyzer-secrets').checked,
         remediationSuggestions: base.capabilities.remediationSuggestions,
@@ -82,6 +83,7 @@
     $('timeout-sec').value = Math.max(5, Math.round(policy.limits.timeoutMs / 1000));
     $('severity').value = policy.severityThreshold;
     $('analyzer-builtin').checked = policy.analyzers.includes('builtin');
+    $('analyzer-ast').checked = policy.analyzers.includes('ast');
     $('analyzer-secrets').checked = policy.analyzers.includes('secret-patterns');
     $('analyzer-dependencies').checked = policy.analyzers.includes('dependency-audit');
     $('retain-snippets').checked = policy.privacy.retainSourceSnippets;
