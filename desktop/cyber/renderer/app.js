@@ -107,6 +107,12 @@
       return;
     }
     fillPolicyForm(result.policy);
+    lastReport = null;
+    $('export-report').disabled = true;
+    $('export-sbom').disabled = true;
+    renderDependencyInventory(null);
+    $('results').replaceChildren();
+    $('result-caption').textContent = 'تغيرت السياسات؛ نفّذ فحصاً جديداً للحصول على تقرير مطابق للإعدادات الحالية.';
     status.textContent = 'تم حفظ سياسات الفحص محلياً.';
     toast('تم حفظ إعدادات Midad Cyber.');
     showPage('dashboard');
