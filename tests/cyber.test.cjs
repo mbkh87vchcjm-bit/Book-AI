@@ -75,6 +75,11 @@ test('file resource limits prevent oversized or excessive scans', () => {
   assert.equal(Policy.fileLimitDecision({sizeBytes: 60}, policy, {totalBytes: 100}).reason, 'max-total-bytes-exceeded');
 });
 
+test('source analysis fails closed until a relative file path is supplied', () => {
+  const policy = Policy.createPolicy();
+  assert.equal(Policy.authorizeAction('static-analysis', policy).reason, 'path-required');
+});
+
 test('local static analysis is authorized only inside selected scope', () => {
   const policy = Policy.createPolicy({scope: {allowedPaths: ['src']}});
   assert.equal(Policy.authorizeAction('static-analysis', policy, {path: 'src/app.php', analyzer: 'builtin'}).allowed, true);
