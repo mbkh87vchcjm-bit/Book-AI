@@ -72,7 +72,10 @@ test('file resource limits prevent oversized or excessive scans', () => {
   assert.equal(Policy.fileLimitDecision({sizeBytes: 50}, policy, {fileCount: 1, totalBytes: 50}).allowed, true);
   assert.equal(Policy.fileLimitDecision({sizeBytes: 101}, policy, {}).reason, 'max-file-bytes-exceeded');
   assert.equal(Policy.fileLimitDecision({sizeBytes: 50}, policy, {fileCount: 2}).reason, 'max-files-exceeded');
-  assert.equal(Policy.fileLimitDecision({sizeBytes: 60}, policy, {totalBytes: 100}).reason, 'max-total-bytes-exceeded');
+  assert.equal(Policy.fileLimitDecision({sizeBytes: 60}, policy, {fileCount: 0, totalBytes: 100}).reason, 'max-total-bytes-exceeded');
+  assert.equal(Policy.fileLimitDecision({sizeBytes: 1}, policy, {fileCount: -1, totalBytes: 0}).reason, 'scan-totals-invalid');
+  assert.equal(Policy.findingLimitDecision(4, policy).allowed, true);
+  assert.equal(Policy.findingLimitDecision(5, policy).reason, 'max-findings-exceeded');
 });
 
 test('source analysis fails closed until a relative file path is supplied', () => {
@@ -101,6 +104,7 @@ test('fix suggestions require review mode; applying a fix requires explicit appr
   const review = Policy.createPolicy({mode: 'review', capabilities: {remediationSuggestions: true, applyRemediations: true}});
   assert.equal(Policy.authorizeAction('suggest-fix', review, {path: 'src/a.php'}).allowed, true);
   assert.equal(Policy.authorizeAction('apply-fix', review, {path: 'src/a.php'}).reason, 'explicit-user-approval-required');
+  assert.equal(Policy.authorizeAction('apply-fix', review, {path: 'src/a.php', userApproved: true}).reason, 'change-summary-required');
   assert.equal(Policy.authorizeAction('apply-fix', review, {
     path: 'src/a.php', userApproved: true, changeSummary: 'Use a parameterized query'
   }).allowed, true);
