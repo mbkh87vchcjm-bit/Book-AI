@@ -35,6 +35,10 @@ test('Electron main process enforces renderer isolation and sandboxing', () => {
   assert.match(main, /will-navigate/);
   assert.match(main, /setPermissionRequestHandler/);
   assert.match(main, /cyber:export-sbom/);
+  assert.match(main, /let lastScanReport = null/);
+  assert.match(main, /ipcMain\.handle\('cyber:export-report', async \(\) =>/);
+  assert.match(main, /ipcMain\.handle\('cyber:export-sbom', async \(\) =>/);
+  assert.match(main, /const report = lastScanReport/);
 });
 
 test('renderer CSP blocks network connections, frames and plugin objects', () => {
@@ -57,6 +61,9 @@ test('preload exposes only explicit cyber operations', () => {
   assert.match(preload, /scanProject/);
   assert.match(preload, /exportReport/);
   assert.match(preload, /exportSbom/);
+  assert.match(preload, /exportReport: \(\) => ipcRenderer\.invoke/);
+  assert.match(preload, /exportSbom: \(\) => ipcRenderer\.invoke/);
+  assert.doesNotMatch(preload, /export(?:Report|Sbom): \(report\)/);
   assert.doesNotMatch(preload, /require\(['"]node:fs/);
   assert.doesNotMatch(preload, /sendSync|executeJavaScript/);
 });
@@ -65,6 +72,8 @@ test('renderer has no direct Node, network, or shell capability', () => {
   assert.match(renderer, /window\.midadCyber/);
   assert.match(renderer, /async function exportReport/);
   assert.match(renderer, /async function exportSbom/);
+  assert.match(renderer, /api\.exportReport\(\)/);
+  assert.match(renderer, /api\.exportSbom\(\)/);
   assert.match(renderer, /MidadCyberKnowledge\.resolveTerm|MidadCyberKnowledge/);
   assert.doesNotMatch(renderer, /\brequire\s*\(/);
   assert.doesNotMatch(renderer, /\bfetch\s*\(/);
