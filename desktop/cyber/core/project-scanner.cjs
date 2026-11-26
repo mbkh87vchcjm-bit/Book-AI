@@ -228,7 +228,7 @@ async function scanProject(options) {
             dependencyInventory.manifestsScanned += 1;
             if (!dependencyInventory.managers.includes(parsed.manager)) dependencyInventory.managers.push(parsed.manager);
             dependencyInventory.packageCount += parsed.packageCount;
-            dependencyInventory.packages.push(...parsed.packages);
+            dependencyInventory.packages.push(...parsed.packages.map((pkg) => ({...pkg, manifest: relativePath})));
             if (parsed.truncated) dependencyInventory.truncated = true;
           }
         } catch (_) {
