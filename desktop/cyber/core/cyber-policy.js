@@ -8,13 +8,13 @@
 }(typeof globalThis !== 'undefined' ? globalThis : this, function () {
   'use strict';
   var SEVERITY = {info: 0, low: 1, medium: 2, high: 3, critical: 4};
-  var ANALYZERS = ['builtin', 'semgrep', 'dependency-audit', 'secret-patterns'];
+  var ANALYZERS = ['builtin', 'ast', 'semgrep', 'dependency-audit', 'secret-patterns'];
   var MODES = ['disabled', 'education', 'read-only', 'review'];
   var DEFAULTS = {
     version: 1, enabled: true, mode: 'read-only',
     scope: {allowedPaths: ['.'], excludedPaths: ['.git', 'node_modules', 'vendor', 'dist', 'build', '.midad', 'coverage']},
     limits: {maxFiles: 5000, maxFileBytes: 1048576, maxTotalBytes: 104857600, maxFindings: 2000, timeoutMs: 120000},
-    analyzers: ['builtin'], severityThreshold: 'info',
+    analyzers: ['builtin', 'ast'], severityThreshold: 'info',
     capabilities: {staticAnalysis: true, dependencyInventory: true, secretDetection: true,
       remediationSuggestions: true, applyRemediations: false, networkAccess: false, executeProjectCode: false},
     privacy: {redactSecretValues: true, retainSourceSnippets: false, localOnly: true}
