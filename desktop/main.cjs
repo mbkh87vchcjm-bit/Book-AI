@@ -9,6 +9,7 @@ const Sbom = require('./cyber/core/sbom-export.cjs');
 
 let mainWindow = null;
 let selectedProjectRoot = null;
+let lastScanReport = null;
 
 function policyFilePath() {
   return path.join(app.getPath('userData'), 'cyber-policy.json');
@@ -75,6 +76,7 @@ ipcMain.handle('cyber:choose-project', async () => {
     selectedProjectRoot = await fs.realpath(result.filePaths[0]);
     const stat = await fs.stat(selectedProjectRoot);
     if (!stat.isDirectory()) return {ok: false, error: 'not-a-directory'};
+    lastScanReport = null;
     return {ok: true, project: path.basename(selectedProjectRoot), path: selectedProjectRoot};
   } catch (_) {
     selectedProjectRoot = null;
@@ -94,11 +96,15 @@ ipcMain.handle('cyber:save-policy', async (_event, input) => {
 
 ipcMain.handle('cyber:scan-project', async () => {
   if (!selectedProjectRoot) return {ok: false, error: 'choose-project-first'};
+  lastScanReport = null;
   const policy = await loadPolicy();
-  return Scanner.scanProject({root: selectedProjectRoot, policy});
+  const report = await Scanner.scanProject({root: selectedProjectRoot, policy});
+  if (report && report.ok === true) lastScanReport = report;
+  return report;
 });
 
-ipcMain.handle('cyber:export-report', async (_event, report) => {
+ipcMain.handle('cyber:export-report', async () => {
+  const report = lastScanReport;
   if (!report || report.ok !== true || !Array.isArray(report.findings)) {
     return {ok: false, error: 'invalid-report'};
   }
@@ -159,8 +165,9 @@ ipcMain.handle('cyber:export-report', async (_event, report) => {
 });
 
 
-ipcMain.handle('cyber:export-sbom', async (_event, report) => {
+ipcMain.handle('cyber:export-sbom', async () => {
   try {
+    const report = lastScanReport;
     const inventory = report && report.dependencyInventory;
     if (!report || report.ok !== true || !inventory || inventory.enabled !== true ||
         !Array.isArray(inventory.packages) || inventory.packages.length === 0) {
