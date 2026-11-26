@@ -142,6 +142,8 @@
     if (capability && policy.capabilities[capability] !== true) {
       return {allowed: false, reason: 'capability-disabled', capability: capability};
     }
+    var pathRequired = ['read-source', 'static-analysis', 'dependency-inventory', 'secret-pattern-scan', 'security-review', 'suggest-fix', 'apply-fix'].indexOf(action) >= 0;
+    if (pathRequired && !ctx.path) return {allowed: false, reason: 'path-required'};
     if (ctx.path) {
       var pathResult = pathDecision(ctx.path, policy);
       if (!pathResult.allowed) return {allowed: false, reason: pathResult.reason, path: pathResult.path};
