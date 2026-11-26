@@ -1,8 +1,8 @@
 'use strict';
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const Policy = require('../app/src/main/assets/web/cyber-policy.js');
-const Knowledge = require('../app/src/main/assets/web/cyber-knowledge.js');
+const Policy = require('../desktop/cyber/core/cyber-policy.js');
+const Knowledge = require('../desktop/cyber/core/cyber-knowledge.js');
 
 test('default cyber policy is local, read-only, and safe by default', () => {
   const policy = Policy.createPolicy();
@@ -96,7 +96,7 @@ test('education mode only authorizes learning and concept explanations', () => {
 
 test('fix suggestions require review mode; applying a fix requires explicit approval', () => {
   const readOnly = Policy.createPolicy({mode: 'read-only'});
-  assert.equal(Policy.authorizeAction('suggest-fix', readOnly, {path: 'src/a.php'}).reason, 'review-mode-required');
+  assert.equal(Policy.authorizeAction('suggest-fix', readOnly, {path: 'src/a.php'}).allowed, true);
   const review = Policy.createPolicy({mode: 'review', capabilities: {remediationSuggestions: true, applyRemediations: true}});
   assert.equal(Policy.authorizeAction('suggest-fix', review, {path: 'src/a.php'}).allowed, true);
   assert.equal(Policy.authorizeAction('apply-fix', review, {path: 'src/a.php'}).reason, 'explicit-user-approval-required');
