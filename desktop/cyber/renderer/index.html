@@ -22,7 +22,7 @@
         <span class="status-dot"></span>
         <div><strong>محلي افتراضياً</strong><small>لا اتصال شبكي ولا تشغيل للمشروع</small></div>
       </div>
-      <div class="sidebar-footer">Midad Cyber · Phase 1.1</div>
+      <div class="sidebar-footer">Midad Cyber · Phase 1.3</div>
     </aside>
 
     <main class="main">
@@ -51,7 +51,7 @@
         </div>
 
         <section class="results-card">
-          <div class="section-heading"><div><h2>نتائج التحليل</h2><p id="result-caption">ستظهر النتائج هنا بعد الفحص.</p></div><button class="button ghost" id="export-report" disabled>تصدير JSON</button></div>
+          <div class="section-heading"><div><h2>نتائج التحليل</h2><p id="result-caption">ستظهر النتائج هنا بعد الفحص.</p></div><button class="button ghost" id="export-report" disabled>تصدير JSON</button><button class="button ghost" id="export-sbom" disabled>تصدير SBOM</button></div>
           <div id="dependency-inventory" class="dependency-inventory hidden" aria-live="polite"></div>
           <div id="results" class="results-empty"><div class="empty-icon large">⌕</div><strong>لا توجد نتائج بعد</strong><span>اختر مجلداً ثم ابدأ الفحص.</span></div>
         </section>
@@ -118,7 +118,7 @@ obj</textarea></label>
             <label class="check-row"><span><strong>أنماط الأسرار</strong><small>البحث المحلي عن قيم اعتماد مكتوبة داخل الملفات، دون إظهار القيمة.</small></span><input id="analyzer-secrets" type="checkbox"></label>
             <label class="check-row disabled-row"><span><strong>Semgrep</strong><small>غير مربوط بعد — سيضاف بعد تثبيت واعتماد المحرك.</small></span><input type="checkbox" disabled></label>
             <label class="check-row"><span><strong>جرد الاعتماديات</strong><small>يقرأ ملفات الحزم المحلية ويستخرج الأسماء والإصدارات دون اتصال أو إثبات للثغرات.</small></span><input id="analyzer-dependencies" type="checkbox"></label>
-            <label class="check-row disabled-row"><span><strong>Semgrep</strong><small>محرك SAST خارجي لم يُدمج بعد؛ لن يتم تنزيله أو تشغيله تلقائياً.</small></span><input type="checkbox" disabled></label>
+            
           </section>
 
           <section class="settings-card">
