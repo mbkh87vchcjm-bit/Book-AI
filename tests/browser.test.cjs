@@ -138,6 +138,7 @@ async function createStandaloneImage(page) {
       await closeImportNotice(page);
       assert.equal(await page.locator('.source-item').count(),1);
       assert.match(await page.locator('.source-item').innerText(),/صورة مفردة/);
+      await page.locator('#mobile-sources').click();
       await page.locator('.source-item-copy').click();
       assert.equal(await page.locator('.ocr-preview').count(),1);
       await page.locator('#edit-page').click();
