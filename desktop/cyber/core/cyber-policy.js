@@ -73,12 +73,21 @@
     if (!Array.isArray(policy.analyzers) ||
         policy.analyzers.some(function (name) { return ANALYZERS.indexOf(name) < 0; })) errors.push('analyzers-invalid');
     if (!own(SEVERITY, policy.severityThreshold)) errors.push('severity-invalid');
+    if (!policy.scope || !Array.isArray(policy.scope.allowedPaths) ||
+        policy.scope.allowedPaths.some(function (entry) { return typeof entry !== 'string' || normalizeRelativePath(entry) === null; }) ||
+        policy.scope.excludedPaths.some(function (entry) { return typeof entry !== 'string' || normalizeRelativePath(entry) === null; })) {
+      errors.push('scope-path-invalid');
+    }
     if (!policy.capabilities || typeof policy.capabilities !== 'object') errors.push('capabilities-invalid');
     else {
+      ['staticAnalysis', 'dependencyInventory', 'secretDetection', 'remediationSuggestions', 'applyRemediations', 'networkAccess', 'executeProjectCode'].forEach(function (key) {
+        if (typeof policy.capabilities[key] !== 'boolean') errors.push('capability-flag-invalid:' + key);
+      });
       if (policy.capabilities.networkAccess !== false) errors.push('network-access-locked');
       if (policy.capabilities.executeProjectCode !== false) errors.push('code-execution-locked');
     }
-    if (!policy.privacy || policy.privacy.localOnly !== true || policy.privacy.redactSecretValues !== true) {
+    if (!policy.privacy || typeof policy.privacy.retainSourceSnippets !== 'boolean' ||
+        policy.privacy.localOnly !== true || policy.privacy.redactSecretValues !== true) {
       errors.push('privacy-guardrail-invalid');
     }
     return {valid: errors.length === 0, errors: errors};
@@ -148,7 +157,14 @@
       var pathResult = pathDecision(ctx.path, policy);
       if (!pathResult.allowed) return {allowed: false, reason: pathResult.reason, path: pathResult.path};
     }
-    if (ctx.analyzer && policy.analyzers.indexOf(ctx.analyzer) < 0) return {allowed: false, reason: 'analyzer-not-enabled'};
+    var defaultAnalyzer = {
+      'static-analysis': 'builtin', 'security-review': 'builtin',
+      'dependency-inventory': 'dependency-audit', 'secret-pattern-scan': 'secret-patterns'
+    }[action];
+    var selectedAnalyzer = ctx.analyzer || defaultAnalyzer;
+    if (selectedAnalyzer && policy.analyzers.indexOf(selectedAnalyzer) < 0) {
+      return {allowed: false, reason: 'analyzer-not-enabled', analyzer: selectedAnalyzer};
+    }
     if (action === 'apply-fix') {
       if (policy.mode !== 'review') return {allowed: false, reason: 'review-mode-required'};
       if (ctx.userApproved !== true) return {allowed: false, reason: 'explicit-user-approval-required'};
@@ -165,7 +181,7 @@
     var text = String(value == null ? '' : value);
     if (!text) return '';
     if (text.length <= 8) return '[REDACTED]';
-    return text.slice(0, 3) + '…[REDACTED]…' + text.slice(-2);
+    return '[REDACTED]';
   }
   return {
     DEFAULTS: DEFAULTS, MODES: MODES.slice(), ANALYZERS: ANALYZERS.slice(), FIXED_DENIALS: FIXED_DENIALS.slice(),
