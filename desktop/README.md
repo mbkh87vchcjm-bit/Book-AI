@@ -38,3 +38,21 @@ Electron 45.5.0 is pinned in package.json. Electron's official release page list
 - Before production use, canonical filesystem paths and junction/symlink boundaries must be reviewed on Windows, and the app should be code-signed and packaged reproducibly.
 
 The root project test suite includes scanner tests. Run `npm test` from the repository root.
+
+
+## Windows installer build
+
+The repository's Windows CI job creates two unsigned x64 artifacts:
+- Midad-Cyber-Setup-<version>-x64.exe — interactive NSIS installer.
+- Midad-Cyber-Portable-<version>-x64.exe — portable executable.
+
+To build locally from this directory:
+
+```powershell
+npm install
+npm run dist:win
+```
+
+Build output is written to desktop/release/. The installer is intentionally unsigned in this development phase. Windows may display a publisher or SmartScreen warning because no production code-signing certificate has been configured. Do not treat an unsigned development artifact as a verified public release.
+
+The CI workflow builds on a Windows runner; Linux CI does not cross-compile this Windows package. The installer must still be exercised on a clean Windows 11 account and a second Windows 10/11 environment before release.

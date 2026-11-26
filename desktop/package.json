@@ -2,13 +2,60 @@
   "name": "midad-cyber-windows",
   "version": "0.1.0",
   "private": true,
-  "description": "Windows-first local defensive cybersecurity workspace for Midad",
+  "description": "Midad Cyber — Windows-first local defensive review workspace",
   "main": "main.cjs",
   "scripts": {
     "start": "electron .",
-    "start:dev": "electron . --enable-logging"
+    "start:dev": "electron . --enable-logging",
+    "electron:version": "electron --version",
+    "dist:win": "electron-builder --win nsis portable --x64"
   },
   "devDependencies": {
-    "electron": "45.5.0"
+    "electron": "45.5.0",
+    "electron-builder": "26.18.0"
+  },
+  "build": {
+    "appId": "com.midad.cyber",
+    "productName": "Midad Cyber",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "main.cjs",
+      "preload.cjs",
+      "cyber/**/*",
+      "package.json"
+    ],
+    "asar": true,
+    "npmRebuild": false,
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "portable",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "signAndEditExecutable": false
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Midad Cyber",
+      "artifactName": "Midad-Cyber-Setup-${version}-${arch}.${ext}"
+    },
+    "portable": {
+      "artifactName": "Midad-Cyber-Portable-${version}-${arch}.${ext}"
+    }
   }
 }

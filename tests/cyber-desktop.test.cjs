@@ -16,6 +16,12 @@ test('Windows Electron package is pinned and has a start command', () => {
   assert.equal(packageJson.main, 'main.cjs');
   assert.equal(packageJson.scripts.start, 'electron .');
   assert.equal(packageJson.devDependencies.electron, '45.5.0');
+  assert.equal(packageJson.devDependencies['electron-builder'], '26.18.0');
+  assert.equal(packageJson.scripts['dist:win'], 'electron-builder --win nsis portable --x64');
+  assert.equal(packageJson.build.appId, 'com.midad.cyber');
+  assert.equal(packageJson.build.asar, true);
+  assert.deepEqual(packageJson.build.win.target.map((item) => item.target), ['nsis', 'portable']);
+  assert.equal(packageJson.build.win.signAndEditExecutable, false);
 });
 
 test('Electron main process enforces renderer isolation and sandboxing', () => {
@@ -61,7 +67,17 @@ test('renderer has no direct Node, network, or shell capability', () => {
 test('control center exposes configurable scope, modes, limits and severity', () => {
   for (const id of [
     'mode', 'allowed-paths', 'excluded-paths', 'analyzer-builtin',
-    'analyzer-secrets', 'max-files', 'max-file-mb', 'max-total-mb',
+    'analyzer-secrets', 'analyzer-dependencies', 'max-files', 'max-file-mb', 'max-total-mb',
     'max-findings', 'timeout-sec', 'severity', 'retain-snippets'
   ]) assert.ok(html.includes('id="' + id + '"'), 'Missing control: ' + id);
+});
+
+
+test('Windows CI builds and uploads the x64 desktop package', () => {
+  const workflow = fs.readFileSync(path.join(root, '.github/workflows/ci.yml'), 'utf8');
+  assert.match(workflow, /windows-desktop:/);
+  assert.match(workflow, /runs-on: windows-2022/);
+  assert.match(workflow, /npm run dist:win/);
+  assert.match(workflow, /Midad-Cyber-Windows-x64/);
+  assert.match(workflow, /if-no-files-found: error/);
 });
