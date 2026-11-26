@@ -42,6 +42,7 @@ test('renderer CSP blocks network connections, frames and plugin objects', () =>
   assert.match(html, /cyber-knowledge\.js/);
   assert.match(html, /id="glossary-page"/);
   assert.match(html, /id="concept-term"/);
+  assert.match(html, /id="export-sbom"/);
   assert.match(html, /frame-src 'none'/);
   assert.match(html, /object-src 'none'/);
   assert.match(html, /script-src 'self'/);
@@ -62,6 +63,8 @@ test('preload exposes only explicit cyber operations', () => {
 
 test('renderer has no direct Node, network, or shell capability', () => {
   assert.match(renderer, /window\.midadCyber/);
+  assert.match(renderer, /async function exportReport/);
+  assert.match(renderer, /async function exportSbom/);
   assert.match(renderer, /MidadCyberKnowledge\.resolveTerm|MidadCyberKnowledge/);
   assert.doesNotMatch(renderer, /\brequire\s*\(/);
   assert.doesNotMatch(renderer, /\bfetch\s*\(/);
