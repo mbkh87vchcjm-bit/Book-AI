@@ -39,6 +39,12 @@ test('Electron main process enforces renderer isolation and sandboxing', () => {
   assert.match(main, /ipcMain\.handle\('cyber:export-report', async \(\) =>/);
   assert.match(main, /ipcMain\.handle\('cyber:export-sbom', async \(\) =>/);
   assert.match(main, /const report = lastScanReport/);
+  assert.match(main, /let scanRevision = 0/);
+  assert.match(main, /const candidateRoot = await fs\.realpath/);
+  assert.match(main, /const generation = \+\+scanRevision/);
+  assert.match(main, /selectedProjectRoot !== scanRoot/);
+  assert.match(main, /scan-context-changed/);
+  assert.match(main, /scanRevision \+= 1/);
 });
 
 test('renderer CSP blocks network connections, frames and plugin objects', () => {
@@ -74,6 +80,7 @@ test('renderer has no direct Node, network, or shell capability', () => {
   assert.match(renderer, /async function exportSbom/);
   assert.match(renderer, /api\.exportReport\(\)/);
   assert.match(renderer, /api\.exportSbom\(\)/);
+  assert.match(renderer, /تغيرت السياسات؛ نفّذ فحصاً جديداً/);
   assert.match(renderer, /MidadCyberKnowledge\.resolveTerm|MidadCyberKnowledge/);
   assert.doesNotMatch(renderer, /\brequire\s*\(/);
   assert.doesNotMatch(renderer, /\bfetch\s*\(/);
