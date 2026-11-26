@@ -5,6 +5,7 @@ const fs = require('node:fs/promises');
 const path = require('node:path');
 const Policy = require('./cyber/core/cyber-policy.js');
 const Scanner = require('./cyber/core/project-scanner.cjs');
+const Sbom = require('./cyber/core/sbom-export.cjs');
 
 let mainWindow = null;
 let selectedProjectRoot = null;
@@ -155,6 +156,30 @@ ipcMain.handle('cyber:export-report', async (_event, report) => {
   };
   await fs.writeFile(result.filePath, JSON.stringify(safeReport, null, 2), {encoding: 'utf8', flag: 'wx'});
   return {ok: true};
+});
+
+
+ipcMain.handle('cyber:export-sbom', async (_event, report) => {
+  try {
+    const inventory = report && report.dependencyInventory;
+    if (!report || report.ok !== true || !inventory || inventory.enabled !== true ||
+        !Array.isArray(inventory.packages) || inventory.packages.length === 0) {
+      return {ok: false, error: 'dependency-inventory-required'};
+    }
+    const bom = Sbom.createCycloneDxSbom(report, {
+      projectName: selectedProjectRoot ? path.basename(selectedProjectRoot) : report.project
+    });
+    const result = await dialog.showSaveDialog(mainWindow, {
+      title: 'تصدير قائمة مكونات البرمجيات',
+      defaultPath: 'midad-sbom.cdx.json',
+      filters: [{name: 'CycloneDX JSON SBOM', extensions: ['json']}]
+    });
+    if (result.canceled || !result.filePath) return {canceled: true};
+    await fs.writeFile(result.filePath, JSON.stringify(bom, null, 2), {encoding: 'utf8', flag: 'wx'});
+    return {ok: true, componentCount: bom.components.length, specVersion: bom.specVersion};
+  } catch (_) {
+    return {ok: false, error: 'sbom-export-failed'};
+  }
 });
 
 app.whenReady().then(() => {
