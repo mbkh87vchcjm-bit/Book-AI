@@ -8,7 +8,8 @@
     "start": "electron .",
     "start:dev": "electron . --enable-logging",
     "electron:version": "electron --version",
-    "dist:win": "electron-builder --win nsis portable --x64"
+    "dist:win": "electron-builder --win nsis portable --x64",
+    "test:cyber": "node --test ../tests/cyber-ast.test.cjs ../tests/dependency-inventory.test.cjs"
   },
   "devDependencies": {
     "electron": "45.5.0",
@@ -24,6 +25,7 @@
       "main.cjs",
       "preload.cjs",
       "cyber/**/*",
+      "node_modules/@babel/**/*",
       "package.json"
     ],
     "asar": true,
@@ -57,5 +59,8 @@
     "portable": {
       "artifactName": "Midad-Cyber-Portable-${version}-${arch}.${ext}"
     }
+  },
+  "dependencies": {
+    "@babel/parser": "7.29.15"
   }
 }
