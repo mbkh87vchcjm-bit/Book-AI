@@ -72,7 +72,7 @@ test('knowledge context explains whether the index found any records',()=>{
   assert.ok(found.records.every((tool)=>tool.executionEnabled===false));
   const missing=Registry.buildKnowledgeContext('ما حالة الطقس غداً في صنعاء؟',5);
   assert.equal(missing.matched,false);
-  assert.match(missing.note,/لا يخترع/);
+  assert.match(missing.note,/لا تخترع/);
 });
 
 test('specialized OSINT, AD, firmware, and Java archive wording maps to the intended tools',()=>{
