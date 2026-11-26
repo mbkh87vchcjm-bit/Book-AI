@@ -122,8 +122,10 @@
   }
   function fileLimitDecision(fileInfo, policyInput, totals) {
     var policy = policyInput && policyInput.limits ? policyInput : createPolicy(policyInput);
-    var info = fileInfo || {}, count = Number(totals && totals.fileCount);
-    var totalBytes = Number(totals && totals.totalBytes), size = Number(info.sizeBytes);
+    var info = fileInfo || {};
+    var count = totals && totals.fileCount !== undefined ? Number(totals.fileCount) : 0;
+    var totalBytes = totals && totals.totalBytes !== undefined ? Number(totals.totalBytes) : 0;
+    var size = Number(info.sizeBytes);
     if (!Number.isSafeInteger(count) || count < 0 || !Number.isSafeInteger(totalBytes) || totalBytes < 0) {
       return {allowed: false, reason: 'scan-totals-invalid'};
     }
