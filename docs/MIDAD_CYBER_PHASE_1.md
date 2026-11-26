@@ -74,3 +74,6 @@ The dependency inventory can now be exported as CycloneDX 1.7 JSON. The document
 
 This is not a complete SBOM or SCA result. Full dependency relationships are not resolved, no PURLs or cryptographic component hashes are generated, license identification is not implemented, and no CVE feed is consulted. The app remains offline. Export handlers use the latest report retained by the Electron main process; renderer-supplied report objects are not accepted. The export must not be described as proof of safety or of vulnerability absence.
 
+
+
+The main process binds each scan to the selected project root and a monotonically increasing scan revision. Selecting another project, saving new policy settings, or starting a newer scan invalidates prior in-flight results. Report and SBOM exports only use the last successful report retained by the main process.
