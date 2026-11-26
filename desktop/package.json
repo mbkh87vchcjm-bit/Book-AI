@@ -25,6 +25,7 @@
       "main.cjs",
       "preload.cjs",
       "cyber/**/*",
+      "assets/**/*",
       "node_modules/@babel/**/*",
       "package.json"
     ],
@@ -45,7 +46,8 @@
           ]
         }
       ],
-      "signAndEditExecutable": false
+      "signAndEditExecutable": false,
+      "icon": "assets/midad-cyber.ico"
     },
     "nsis": {
       "oneClick": false,
