@@ -321,8 +321,12 @@ function parseMavenPom(text) {
     const group = readTag('groupId');
     const artifact = readTag('artifactId');
     const version = readTag('version');
-    const scope = readTag('scope');
-    if (group && artifact) result.push(entry(group + ':' + artifact, version, scope === 'test' ? 'development-or-test' : 'direct-or-declared', 'pom.xml'));
+    const scope = readTag('scope').toLowerCase();
+    const optional = readTag('optional').toLowerCase() === 'true';
+    let relationship = 'direct-runtime';
+    if (['test', 'provided', 'system'].includes(scope)) relationship = 'development-or-test';
+    else if (optional) relationship = 'direct-optional';
+    if (group && artifact) result.push(entry(group + ':' + artifact, version, relationship, 'pom.xml'));
   }
   return result;
 }
