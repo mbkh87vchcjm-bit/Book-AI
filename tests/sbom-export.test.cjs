@@ -121,3 +121,23 @@ test('output uses the CycloneDX 1.7 schema field structure for its emitted subse
     }
   }
 });
+
+test('ambiguous manifest constraints are not attached to multiple locked versions', () => {
+  const multi = structuredClone(report);
+  multi.dependencyInventory.packages.push(
+    {name: 'express', version: '4.17.3', relationship: 'transitive', manifest: 'package-lock.json'},
+    {name: 'express', version: '^4.0.0', relationship: 'direct-runtime', manifest: 'package.json'}
+  );
+  const bom = Sbom.createCycloneDxSbom(multi);
+  const expressions = bom.components.filter((item) => item.name === 'express');
+  assert.equal(expressions.length, 3);
+  const ambiguous = expressions.find((item) =>
+    item.properties.some((property) => property.name === 'midad:resolution-status'));
+  assert.ok(ambiguous);
+  assert.ok(ambiguous.properties.some((property) =>
+    property.name === 'midad:declared-version-constraint' && property.value === '^4.0.0'));
+  for (const locked of expressions.filter((item) => item.version)) {
+    assert.ok(!locked.properties.some((property) =>
+      property.name === 'midad:declared-version-constraint' && property.value === '^4.0.0'));
+  }
+});
