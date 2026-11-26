@@ -341,7 +341,7 @@
     addConceptField(container, 'مثال', concept.example);
     const sourceItems = window.MidadCyberKnowledge.getReferences(concept);
     addConceptField(container, 'المراجع والإصدارات', sourceItems.length
-      ? sourceItems.map((item) => item.title + ' — ' + item.version + '\\n' + item.url).join('\\n\\n')
+      ? sourceItems.map((item) => item.title + ' — ' + item.version + '\n' + item.url).join('\n\n')
       : 'لم يُسجل مرجع مباشر لهذا المفهوم في القاموس الحالي.');
     const refs = document.createElement('p');
     refs.className = 'muted';
