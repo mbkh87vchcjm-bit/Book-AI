@@ -118,7 +118,10 @@ function createCycloneDxSbom(report, options = {}) {
     const exactMatches = isExactVersion(declaration.version)
       ? matches.filter((group) => group.version === declaration.version.replace(/^v/, ''))
       : [];
-    const target = exactMatches.length === 1 ? exactMatches[0] : matches.length === 1 ? matches[0] : null;
+    // Link a declaration to a lockfile component only when the version matches
+    // exactly. A package-name match alone is not evidence that a range or pin
+    // resolves to a particular installed version.
+    const target = exactMatches.length === 1 ? exactMatches[0] : null;
     if (target) {
       if (!target.relationships.includes(declaration.relationship)) target.relationships.push(declaration.relationship);
       if (declaration.manifest && !target.manifests.includes(declaration.manifest)) target.manifests.push(declaration.manifest);
@@ -126,13 +129,23 @@ function createCycloneDxSbom(report, options = {}) {
         target.constraints.push(declaration.version);
       }
     } else {
+      let resolutionStatus = 'not-found-in-lockfile';
+      if (matches.length > 0) {
+        if (isExactVersion(declaration.version)) {
+          resolutionStatus = 'declared-exact-version-not-found-in-lockfile';
+        } else if (matches.length > 1) {
+          resolutionStatus = 'ambiguous-lockfile-version-match';
+        } else {
+          resolutionStatus = 'single-lockfile-candidate-not-validated';
+        }
+      }
       remaining.push({
         name: declaration.name,
         version: null,
         relationships: [declaration.relationship],
         manifests: declaration.manifest ? [declaration.manifest] : [],
         constraints: declaration.version === 'unspecified' ? [] : [declaration.version],
-        resolutionAmbiguous: matches.length > 1
+        resolutionStatus
       });
     }
   }
@@ -145,7 +158,7 @@ function createCycloneDxSbom(report, options = {}) {
     relationships.forEach((relationship) => addProperty(properties, 'midad:relationship', relationship));
     manifests.forEach((manifest) => addProperty(properties, 'midad:source-manifest', manifest));
     group.constraints.forEach((constraint) => addProperty(properties, 'midad:declared-version-constraint', constraint));
-    if (group.resolutionAmbiguous) addProperty(properties, 'midad:resolution-status', 'ambiguous-lockfile-version-match');
+    if (group.resolutionStatus) addProperty(properties, 'midad:resolution-status', group.resolutionStatus);
     if (!isLockfile(manifests[0]) && group.version === null) {
       addProperty(properties, 'midad:version-source', 'manifest-declaration-not-lockfile-resolved');
     }
