@@ -198,3 +198,24 @@ test('knowledge catalog includes source-backed OWASP Top 10 and ASVS concepts', 
   assert.ok(Knowledge.listByDomain('vulnerability-management').length >= 3);
   assert.ok(Knowledge.concepts.length >= 30);
 });
+
+test('XSS and CSRF remain distinct, source-backed concepts', () => {
+  const xss = Knowledge.resolveTerm('XSS');
+  const csrf = Knowledge.resolveTerm('CSRF');
+  assert.equal(xss.status, 'resolved');
+  assert.equal(csrf.status, 'resolved');
+  assert.equal(Knowledge.compareTerms('XSS', 'CSRF').relation, 'explicit-contrast');
+  assert.ok(Knowledge.getReferences(xss.concept).some((item) => item.id === 'OWASP-XSS-CHEATSHEET'));
+
+  for (const term of ['MFA', 'RBAC', 'Input Validation', 'Session Management']) {
+    assert.equal(Knowledge.resolveTerm(term).status, 'resolved', term);
+  }
+});
+
+test('every knowledge concept with references resolves all referenced source IDs', () => {
+  for (const concept of Knowledge.concepts) {
+    if (!Array.isArray(concept.sources) || concept.sources.length === 0) continue;
+    assert.equal(Knowledge.getReferences(concept).length, concept.sources.length, concept.id);
+  }
+  assert.ok(Knowledge.concepts.length >= 35);
+});
