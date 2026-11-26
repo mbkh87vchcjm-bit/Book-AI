@@ -283,6 +283,10 @@ async function scanProject(options) {
       }
       const line = lines[index];
       for (const rule of rules) {
+        const astSupersedesTextRule = AstAnalyzer.available &&
+          AstAnalyzer.supportsFile(relativePath) && policy.analyzers.includes('ast') &&
+          ['CYB-CODE-001', 'CYB-SQL-001', 'CYB-XSS-001'].includes(rule.id);
+        if (astSupersedesTextRule) continue;
         if (findings.length >= policy.limits.maxFindings) {
           stoppedReason = 'max-findings-exceeded';
           return;
