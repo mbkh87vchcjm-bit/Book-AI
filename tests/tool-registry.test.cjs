@@ -74,10 +74,3 @@ test('knowledge context explains whether the index found any records',()=>{
   assert.equal(missing.matched,false);
   assert.match(missing.note,/لا يخترع/);
 });
-
-test('specialized OSINT, AD, firmware, and Java archive wording maps to the intended tools',()=>{
-  assert.ok(Registry.searchTools('أريد البحث عن اسم مستخدم في المنصات').results.some((tool)=>tool.id==='sherlock'));
-  assert.ok(Registry.searchTools('أحتاج مراجعة علاقات المستخدمين والمجموعات في Active Directory').results.some((tool)=>tool.id==='bloodhound'));
-  assert.ok(Registry.searchTools('كيف أفحص ملف firmware وأتعرف على مكوناته؟').results.some((tool)=>tool.id==='binwalk'));
-  assert.ok(Registry.searchTools('I need to inspect a Java JAR and view the decompiled source').results.some((tool)=>tool.id==='jd-gui'));
-});

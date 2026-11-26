@@ -7,7 +7,7 @@ const CONCEPT_CUES = Object.freeze([
   {id:'SEC-AUTHN-001',cues:['اثبات الهوية','التحقق من هوية المستخدم','تسجيل الدخول','login','identity verification']},
   {id:'SEC-AUTHZ-001',cues:['صلاحية الوصول','من يحق له الوصول','صلاحيات المستخدم','access permission','who can access']},
   {id:'SEC-ENCRYPT-001',cues:['حماية سرية البيانات','اخفاء محتوى البيانات','تشفير البيانات','data confidentiality','encrypt data']},
-  {id:'SEC-HASH-001',cues:['بصمة الملف','بصمة رقمية','التحقق من سلامة الملف','التجزئة','تجزئة البيانات','file fingerprint','file integrity hash']},
+  {id:'SEC-HASH-001',cues:['بصمة الملف','بصمة رقمية','التحقق من سلامة الملف','file fingerprint','file integrity hash']},
   {id:'SEC-VULN-001',cues:['نقطة ضعف امنية','مشكلة امنية في البرنامج','security weakness','software weakness']},
   {id:'SEC-SAST-001',cues:['تحليل ساكن','تحليل الشيفرة دون تشغيل','فحص الكود دون تشغيل','static code analysis','source code review']},
   {id:'SEC-DAST-001',cues:['اختبار التطبيق اثناء التشغيل','فحص التطبيق وهو يعمل','dynamic application testing','runtime web testing']},

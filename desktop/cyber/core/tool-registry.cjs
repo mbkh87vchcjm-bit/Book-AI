@@ -598,6 +598,15 @@ function searchTools(query,categoryId,limit) {
     results:matches.slice(0,maximum).map((item)=>({...publicTool(item.tool),relevanceScore:item.score}))
   };
 }
+function getTool(idOrName) {
+  const key=normalize(idOrName);
+  const canonical=ALIASES[key];
+  const target=canonical?slug(canonical):slug(key);
+  const direct=toolsById.get(target);
+  if (direct) return publicTool(direct);
+  const found=TOOLS.find((tool)=>normalize(tool.name)===key||tool.aliases.some((alias)=>normalize(alias)===key));
+  return found?publicTool(found):null;
+}
 function buildKnowledgeContext(question,maximum) {
   const result=searchTools(question,'all',maximum||8);
   const records=result.results.map((tool)=>({
