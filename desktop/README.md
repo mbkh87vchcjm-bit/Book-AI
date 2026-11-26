@@ -64,3 +64,10 @@ The desktop package embeds the pinned @babel/parser runtime dependency and enabl
 
 
 The Windows CI artifact also contains `SHA256SUMS.txt`. On PowerShell, verify an EXE with `Get-FileHash .\\Midad-Cyber-Setup-<version>-x64.exe -Algorithm SHA256` and compare the `Hash` value with the matching line in the checksum file. A matching hash verifies file integrity against that manifest; it does not authenticate the publisher because these development artifacts are unsigned.
+
+
+## CycloneDX SBOM export
+
+After a local dependency inventory has been collected, the dashboard can export a CycloneDX 1.7 JSON document. The generated file is explicitly marked as a partial pre-build manifest inventory. Exact package versions from lockfiles are emitted as versions; ranges and workspace selectors remain declared-version properties rather than being mislabeled as resolved versions.
+
+This is not a complete build SBOM or Software Composition Analysis result. It does not resolve dependency graphs, include package hashes or PURLs, identify licenses, or match packages against a vulnerability feed. It makes no network requests. Use the file as a starting inventory for a separate review, not as evidence that the dependencies are safe.
