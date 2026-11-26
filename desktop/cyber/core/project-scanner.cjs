@@ -13,6 +13,8 @@ const SOURCE_EXTENSIONS = new Set([
   '.ini', '.conf', '.xml', '.properties', '.env', '.sh', '.ps1'
 ]);
 const SOURCE_NAMES = new Set(['dockerfile', 'makefile', '.env', '.env.example', '.env.sample']);
+const MAX_DIRECTORY_DEPTH = 64;
+const MAX_DIRECTORY_COUNT = 10000;
 const SKIP_DIRS = new Set([
   '.git', 'node_modules', 'vendor', 'dist', 'build', 'coverage',
   '.midad', '.next', '.venv', 'venv', 'target', 'bin', 'obj'
@@ -133,6 +135,7 @@ async function scanProject(options) {
   const startedAt = Date.now();
   const findings = [];
   const warnings = [];
+  const visitedDirectories = new Set();
   let scannedFiles = 0;
   let skippedFiles = 0;
   let totalBytes = 0;
@@ -330,9 +333,52 @@ async function scanProject(options) {
       stoppedReason = 'timeout';
       return;
     }
+
+    const depth = relativeDirectory ? relativeDirectory.split('/').length : 0;
+    if (depth > MAX_DIRECTORY_DEPTH) {
+      skippedFiles += 1;
+      warnings.push({code: 'max-directory-depth-exceeded', path: relativeDirectory || '.'});
+      return;
+    }
+
+    let canonicalDirectory;
+    try {
+      const directoryStat = await fs.lstat(directory);
+      if (directoryStat.isSymbolicLink() || !directoryStat.isDirectory()) {
+        skippedFiles += 1;
+        warnings.push({code: 'non-regular-directory-skipped', path: relativeDirectory || '.'});
+        return;
+      }
+      canonicalDirectory = await fs.realpath(directory);
+    } catch (_) {
+      skippedFiles += 1;
+      warnings.push({code: 'directory-unavailable', path: relativeDirectory || '.'});
+      return;
+    }
+
+    if (!isWithin(root, canonicalDirectory)) {
+      skippedFiles += 1;
+      warnings.push({code: 'directory-path-escape-blocked', path: relativeDirectory || '.'});
+      return;
+    }
+
+    const directoryKey = process.platform === 'win32'
+      ? canonicalDirectory.toLowerCase()
+      : canonicalDirectory;
+    if (visitedDirectories.has(directoryKey)) {
+      skippedFiles += 1;
+      warnings.push({code: 'directory-cycle-blocked', path: relativeDirectory || '.'});
+      return;
+    }
+    if (visitedDirectories.size >= MAX_DIRECTORY_COUNT) {
+      stoppedReason = 'max-directory-count-exceeded';
+      return;
+    }
+    visitedDirectories.add(directoryKey);
+
     let entries;
     try {
-      entries = await fs.readdir(directory, {withFileTypes: true});
+      entries = await fs.readdir(canonicalDirectory, {withFileTypes: true});
     } catch (_) {
       warnings.push({code: 'directory-read-failed', path: relativeDirectory || '.'});
       return;
@@ -341,9 +387,10 @@ async function scanProject(options) {
     for (const entry of entries) {
       if (stoppedReason) return;
       const relativePath = relativeDirectory ? path.posix.join(relativeDirectory, entry.name) : entry.name;
-      const absolutePath = path.join(directory, entry.name);
+      const absolutePath = path.join(canonicalDirectory, entry.name);
       if (entry.isSymbolicLink()) {
         skippedFiles += 1;
+        warnings.push({code: 'reparse-or-symbolic-link-skipped', path: relativePath});
         continue;
       }
       if (entry.isDirectory()) {
