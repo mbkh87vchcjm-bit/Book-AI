@@ -354,8 +354,16 @@ async function createStandaloneImage(page) {
       await page.locator('#allow-math').locator('..').click(); await page.locator('#ocr-enabled').locator('..').click(); await page.locator('#save-settings').click();
       await ask(page, 'احسب 12 × 5'); assert.match(await page.locator('.message.assistant').last().innerText(), /لم أجد/);
       await upload(page, 'scanned.pdf'); assert.match(await closeImportNotice(page), /فعّل قراءة الصور/);
-      assert.equal(await page.locator('.source-item').count(), 0);
-      await finish(scope, 'Local calculation and enforceable strict, calculation and OCR controls');
+      assert.equal(await page.locator('.source-item').count(), 1);
+      await page.locator('#mobile-sources').click();
+      await page.locator('.source-item-copy').click();
+      assert.equal(await page.locator('.ocr-preview').count(), 1);
+      assert.match(await page.locator('.modal').innerText(), /لم تتم محاولة OCR/);
+      await page.locator('#edit-page').click();
+      await page.locator('#page-edit').fill('نص يدوي بعد مراجعة صورة الصفحة.');
+      await page.locator('#edit-save').click();
+      assert.match(await page.locator('.excerpt-text').innerText(), /نص يدوي بعد مراجعة صورة الصفحة/);
+      await finish(scope, 'Local calculation, OCR settings and retaining skipped image pages for manual review');
     }
 
     {
