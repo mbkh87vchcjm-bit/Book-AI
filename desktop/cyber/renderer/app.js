@@ -129,6 +129,12 @@
       return;
     }
     selectedProject = result;
+    lastReport = null;
+    $('export-report').disabled = true;
+    $('export-sbom').disabled = true;
+    renderDependencyInventory(null);
+    $('results').replaceChildren();
+    $('result-caption').textContent = 'تم تغيير المشروع؛ ابدأ فحصاً جديداً لعرض النتائج.';
     $('project-path').classList.add('selected');
     $('project-path').replaceChildren();
     const icon = document.createElement('span');
@@ -291,9 +297,13 @@
 
   async function exportReport() {
     if (!lastReport) return;
-    const result = await api.exportReport(lastReport);
-    if (result.ok) toast('تم حفظ التقرير في المكان الذي اخترته.');
-    else if (!result.canceled) toast('تعذر حفظ التقرير.');
+    try {
+      const result = await api.exportReport();
+      if (result.ok) toast('تم حفظ التقرير في المكان الذي اخترته.');
+      else if (!result.canceled) toast('تعذر حفظ التقرير.');
+    } catch (_) {
+      toast('تعذر حفظ التقرير.');
+    }
   }
 
   async function exportSbom() {
@@ -303,7 +313,7 @@
       return;
     }
     try {
-      const result = await api.exportSbom(lastReport);
+      const result = await api.exportSbom();
       if (result.ok) toast('تم تصدير CycloneDX 1.7 بعدد ' + result.componentCount + ' مكوّناً.');
       else if (!result.canceled) toast('تعذر تصدير SBOM.');
     } catch (_) {
