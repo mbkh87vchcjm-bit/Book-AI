@@ -115,12 +115,15 @@ function createCycloneDxSbom(report, options = {}) {
     const matches = Array.from(lockGroups.values()).filter((group) =>
       group.name.toLowerCase() === declaration.name.toLowerCase()
     );
-    if (matches.length) {
-      for (const group of matches) {
-        if (!group.relationships.includes(declaration.relationship)) group.relationships.push(declaration.relationship);
-        if (declaration.manifest && !group.manifests.includes(declaration.manifest)) group.manifests.push(declaration.manifest);
-        if (declaration.version !== 'unspecified' &&
-            !group.constraints.includes(declaration.version)) group.constraints.push(declaration.version);
+    const exactMatches = isExactVersion(declaration.version)
+      ? matches.filter((group) => group.version === declaration.version.replace(/^v/, ''))
+      : [];
+    const target = exactMatches.length === 1 ? exactMatches[0] : matches.length === 1 ? matches[0] : null;
+    if (target) {
+      if (!target.relationships.includes(declaration.relationship)) target.relationships.push(declaration.relationship);
+      if (declaration.manifest && !target.manifests.includes(declaration.manifest)) target.manifests.push(declaration.manifest);
+      if (declaration.version !== 'unspecified' && !target.constraints.includes(declaration.version)) {
+        target.constraints.push(declaration.version);
       }
     } else {
       remaining.push({
@@ -128,7 +131,8 @@ function createCycloneDxSbom(report, options = {}) {
         version: null,
         relationships: [declaration.relationship],
         manifests: declaration.manifest ? [declaration.manifest] : [],
-        constraints: declaration.version === 'unspecified' ? [] : [declaration.version]
+        constraints: declaration.version === 'unspecified' ? [] : [declaration.version],
+        resolutionAmbiguous: matches.length > 1
       });
     }
   }
@@ -141,6 +145,7 @@ function createCycloneDxSbom(report, options = {}) {
     relationships.forEach((relationship) => addProperty(properties, 'midad:relationship', relationship));
     manifests.forEach((manifest) => addProperty(properties, 'midad:source-manifest', manifest));
     group.constraints.forEach((constraint) => addProperty(properties, 'midad:declared-version-constraint', constraint));
+    if (group.resolutionAmbiguous) addProperty(properties, 'midad:resolution-status', 'ambiguous-lockfile-version-match');
     if (!isLockfile(manifests[0]) && group.version === null) {
       addProperty(properties, 'midad:version-source', 'manifest-declaration-not-lockfile-resolved');
     }
