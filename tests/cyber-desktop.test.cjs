@@ -17,6 +17,7 @@ test('Windows Electron package is pinned and has a start command', () => {
   assert.equal(packageJson.scripts.start, 'electron .');
   assert.equal(packageJson.devDependencies.electron, '45.5.0');
   assert.equal(packageJson.devDependencies['electron-builder'], '26.18.0');
+  assert.equal(packageJson.dependencies['@babel/parser'], '7.29.15');
   assert.equal(packageJson.scripts['dist:win'], 'electron-builder --win nsis portable --x64');
   assert.equal(packageJson.build.appId, 'com.midad.cyber');
   assert.equal(packageJson.build.asar, true);
@@ -66,7 +67,7 @@ test('renderer has no direct Node, network, or shell capability', () => {
 
 test('control center exposes configurable scope, modes, limits and severity', () => {
   for (const id of [
-    'mode', 'allowed-paths', 'excluded-paths', 'analyzer-builtin',
+    'mode', 'allowed-paths', 'excluded-paths', 'analyzer-builtin', 'analyzer-ast',
     'analyzer-secrets', 'analyzer-dependencies', 'max-files', 'max-file-mb', 'max-total-mb',
     'max-findings', 'timeout-sec', 'severity', 'retain-snippets'
   ]) assert.ok(html.includes('id="' + id + '"'), 'Missing control: ' + id);
