@@ -118,6 +118,11 @@ ipcMain.handle('cyber:export-report', async (_event, report) => {
     totalBytes: Number(report.totalBytes) || 0,
     stoppedReason: report.stoppedReason || null,
     severitySummary: report.severitySummary || {},
+    astAnalysis: report.astAnalysis ? {
+      available: report.astAnalysis.available === true,
+      scannedFiles: Math.max(0, Number(report.astAnalysis.scannedFiles) || 0),
+      parseFailures: Math.max(0, Number(report.astAnalysis.parseFailures) || 0)
+    } : {available: false, scannedFiles: 0, parseFailures: 0},
     dependencyInventory: report.dependencyInventory ? {
       enabled: report.dependencyInventory.enabled === true,
       manifestsScanned: Math.max(0, Number(report.dependencyInventory.manifestsScanned) || 0),
