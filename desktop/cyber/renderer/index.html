@@ -1,0 +1,199 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'; frame-src 'none'">
+  <meta name="color-scheme" content="dark">
+  <title>مِداد Cyber — Windows</title>
+  <link rel="stylesheet" href="styles.css">
+  <script defer src="../core/cyber-knowledge.js"></script>
+  <script defer src="app.js"></script>
+</head>
+<body>
+  <div class="app">
+    <aside class="sidebar">
+      <div class="brand"><span class="brand-mark">M</span><div><strong>مِداد Cyber</strong><small>بيئة تحليل محلية</small></div></div>
+      <div class="sidebar-label">مساحة العمل</div>
+      <button class="nav-button active" id="nav-dashboard"><span>◈</span> لوحة الفحص</button>
+      <button class="nav-button" id="nav-glossary"><span>⌘</span> قاموس المفاهيم</button>
+      <button class="nav-button" id="nav-tools"><span>▦</span> دليل الأدوات</button>
+      <button class="nav-button" id="nav-assistant"><span>✧</span> المساعد المحلي</button>
+      <button class="nav-button" id="nav-settings"><span>⚙</span> سياسات التحكم</button>
+      <div class="sidebar-note">
+        <span class="status-dot"></span>
+        <div><strong>محلي افتراضياً</strong><small>لا اتصال شبكي ولا تشغيل للمشروع</small></div>
+      </div>
+      <div class="sidebar-footer">Midad Cyber · Phase 1.3</div>
+    </aside>
+
+    <main class="main">
+      <header class="topbar">
+        <div><div class="eyebrow">WINDOWS WORKSPACE</div><h1 id="page-title">لوحة الفحص الأمني</h1></div>
+        <div class="top-actions"><span class="local-pill"><span class="status-dot"></span> محلي</span><button class="button ghost" id="open-settings">الإعدادات</button></div>
+      </header>
+
+      <section class="page" id="dashboard-page">
+        <div class="intro-card">
+          <div><div class="eyebrow">DEFENSIVE CODE REVIEW</div><h2>افحص مشروعك وافهم نتائج المراجعة</h2><p>يقرأ مِداد الملفات النصية ضمن المجلد الذي تختاره، ويعرض مؤشرات تحتاج إلى مراجعة. لا ينفذ شيفرة المشروع ولا يتصل بأهداف خارجية.</p></div>
+          <div class="shield-art">⬡</div>
+        </div>
+
+        <section class="project-card">
+          <div class="section-heading"><div><h2>المشروع المحلي</h2><p>اختر مجلد مشروع تملكه أو لديك تصريح بمراجعته.</p></div><button class="button primary" id="choose-project">اختيار مجلد</button></div>
+          <div class="project-path" id="project-path"><span class="empty-icon">⌁</span><span>لم يتم اختيار مجلد بعد</span></div>
+          <div class="project-actions"><span id="project-state" class="muted">الفحص غير جاهز</span><button class="button success" id="run-scan" disabled>بدء الفحص المحلي</button></div>
+        </section>
+
+        <div class="metrics">
+          <div class="metric"><span>الملفات المفحوصة</span><strong id="metric-files">—</strong></div>
+          <div class="metric"><span>إجمالي النتائج</span><strong id="metric-findings">—</strong></div>
+          <div class="metric"><span>مرتفعة الخطورة</span><strong id="metric-high">—</strong></div>
+          <div class="metric"><span>مدة الفحص</span><strong id="metric-time">—</strong></div>
+        </div>
+
+        <section class="results-card">
+          <div class="section-heading"><div><h2>نتائج التحليل</h2><p id="result-caption">ستظهر النتائج هنا بعد الفحص.</p></div><button class="button ghost" id="export-report" disabled>تصدير JSON</button><button class="button ghost" id="export-sbom" disabled>تصدير SBOM</button></div>
+          <div id="dependency-inventory" class="dependency-inventory hidden" aria-live="polite"></div>
+          <p class="muted">يُتاح تصدير SBOM بصيغة CycloneDX 1.7 بعد تفعيل جرد الاعتماديات وإتمام الفحص. الناتج جرد جزئي قبل البناء، وليس تقرير ثغرات أو ضماناً لسلامة الحزم.</p>
+          <div id="results" class="results-empty"><div class="empty-icon large">⌕</div><strong>لا توجد نتائج بعد</strong><span>اختر مجلداً ثم ابدأ الفحص.</span></div>
+        </section>
+      </section>
+
+
+      <section class="page hidden" id="glossary-page">
+        <div class="settings-intro"><div class="eyebrow">CYBER CONCEPT INTELLIGENCE</div><h2>قاموس يفهم السياق لا الكلمات وحدها</h2><p>ابحث عن مصطلح عربي أو إنجليزي. عند وجود أكثر من معنى، أضف سياق السؤال حتى لا يختار مِداد معنى غير صحيح.</p></div>
+        <section class="settings-card">
+          <div class="settings-title"><div><h3>تحديد معنى المصطلح</h3><p>مثال: Token له معانٍ مختلفة في الأمن والذكاء الاصطناعي والمترجمات.</p></div></div>
+          <label class="field">المصطلح<input id="concept-term" type="text" placeholder="مثال: Token أو Authentication"></label>
+          <label class="field">سياق الاستخدام (اختياري)<input id="concept-context" type="text" placeholder="مثال: API access and authentication"></label>
+          <div class="form-actions"><button class="button primary" type="button" id="resolve-concept">تحديد المفهوم</button></div>
+          <div id="concept-result" class="concept-result" aria-live="polite"><span class="muted">ستظهر هنا النتيجة والتعريف والتمييز.</span></div>
+        </section>
+        <section class="settings-card">
+          <div class="settings-title"><div><h3>مقارنة مفهومين</h3><p>المقارنة مبنية على سجل المفاهيم المحلي.</p></div></div>
+          <div class="settings-grid">
+            <label class="field">المفهوم الأول<input id="compare-first" type="text" placeholder="Authentication"></label>
+            <label class="field">المفهوم الثاني<input id="compare-second" type="text" placeholder="Authorization"></label>
+          </div>
+          <div class="form-actions"><button class="button primary" type="button" id="compare-concepts">قارن بين المفهومين</button></div>
+          <div id="comparison-result" class="concept-result" aria-live="polite"><span class="muted">ستظهر المقارنة هنا.</span></div>
+        </section>
+      </section>
+
+
+      <section class="page hidden" id="tools-page">
+        <div class="settings-intro">
+          <div class="eyebrow">OFFLINE TOOL INTELLIGENCE</div>
+          <h2>دليل أدوات البحث الأمني</h2>
+          <p>سجل محلي منقح للأدوات التي زودتني بها. يعرض الوظائف الموثقة فقط، ويشير بوضوح إلى المعلومات التي ما زالت بحاجة إلى مراجعة.</p>
+        </div>
+        <section class="settings-card">
+          <div class="settings-title"><div><h3>البحث في سجل الأدوات</h3><p id="tool-count">جارٍ تحميل السجل المحلي…</p></div></div>
+          <div class="tool-search-grid">
+            <label class="field">اسم الأداة أو وظيفتها<input id="tools-search" type="search" placeholder="مثال: Semgrep أو تحليل ساكن"></label>
+            <label class="field">التصنيف<select id="tools-category"><option value="all">كل التصنيفات</option></select></label>
+          </div>
+          <div class="form-actions"><button class="button primary" type="button" id="search-tools">ابحث في الأدوات</button></div>
+          <div id="tool-results" class="tool-results" aria-live="polite"><p class="muted">سيظهر سجل الأدوات هنا.</p></div>
+        </section>
+      </section>
+
+      <section class="page hidden" id="assistant-page">
+        <div class="settings-intro">
+          <div class="eyebrow">LOCAL RESEARCH ASSISTANT</div>
+          <h2>مساعد مِداد المحلي</h2>
+          <p>الإجابة تتم عبر نموذج مثبت على جهازك. لا يوجد انتقال إلى نموذج سحابي أو تنفيذ تلقائي للأدوات أو الأوامر.</p>
+        </div>
+        <section class="settings-card">
+          <div class="settings-title"><div><h3>حالة محرك النموذج المحلي</h3><p id="model-status">يتم التحقق من خدمة Ollama المحلية…</p></div></div>
+          <div class="assistant-model-row">
+            <label class="field">النموذج المثبت محلياً<select id="local-model"><option value="">لم يتم اكتشاف نموذج بعد</option></select></label>
+            <button class="button ghost" type="button" id="refresh-models">تحديث قائمة النماذج</button>
+          </div>
+          <div class="notice">يجب تثبيت Ollama والنموذج مسبقاً. يتصل مِداد حصراً بـ 127.0.0.1:11434، ولا يقوم بتنزيل النماذج أو الاتصال بخدمات سحابية.</div>
+          <label class="field">سؤال البحث<textarea id="assistant-question" rows="4" maxlength="4000" placeholder="اسأل عن وظيفة أداة، الفروق بين الأدوات، حدودها، متطلبات تشغيلها محلياً، أو تفسير نتيجة دفاعية محفوظة."></textarea></label>
+          <div class="form-actions"><button class="button primary" type="button" id="ask-local">إرسال إلى النموذج المحلي</button><button class="button ghost" type="button" id="clear-assistant">بدء محادثة جديدة</button></div>
+          <div class="notice">يحفظ مِداد مؤقتاً آخر رسالتين متبادلتين في ذاكرة البرنامج لربط أسئلة المتابعة. لا تُحفظ المحادثة على القرص، وتُمسح عند إغلاق البرنامج أو اختيار «بدء محادثة جديدة».</div>
+          <div id="assistant-answer" class="assistant-answer" aria-live="polite"><p class="muted">لم يتم إرسال سؤال بعد. ابدأ بسؤال طبيعي، ثم تابع بأسئلة مثل «اشرحها أكثر» أو «ما الفرق بينهما؟».</p></div>
+        </section>
+      </section>
+
+      <section class="page hidden" id="settings-page">
+        <div class="settings-intro"><div class="eyebrow">POLICY & CONTROL</div><h2>أنت تتحكم بنطاق الفحص وحدوده</h2><p>الإعدادات قابلة للتخصيص، بينما تبقى حماية الخصوصية ومنع التنفيذ والاتصال الخارجي ضوابط ثابتة.</p></div>
+        <form id="policy-form">
+          <section class="settings-card">
+            <div class="settings-title"><div><h3>وضع التشغيل</h3><p>حدد مستوى عمل مساعد الأمن.</p></div></div>
+            <label class="field">وضع المراجعة
+              <select id="mode">
+                <option value="education">تعليمي — شرح المفاهيم فقط</option>
+                <option value="read-only">قراءة وتحليل دون تعديل</option>
+                <option value="review">مراجعة مع اقتراحات إصلاح</option>
+                <option value="disabled">تعطيل Midad Cyber</option>
+              </select>
+            </label>
+            <div class="notice">وضع المراجعة يعرض اقتراحات فقط. تطبيق التعديلات على الملفات غير متاح في هذه المرحلة.</div>
+          </section>
+
+          <section class="settings-card">
+            <div class="settings-title"><div><h3>نطاق الملفات</h3><p>المسارات نسبية إلى مجلد المشروع الذي تختاره.</p></div></div>
+            <label class="field">المجلدات المسموح بها <textarea id="allowed-paths" rows="3" spellcheck="false">.</textarea><small>سطر مستقل لكل مسار. النقطة تعني جذر المشروع.</small></label>
+            <label class="field">المجلدات المستثناة <textarea id="excluded-paths" rows="4" spellcheck="false">.git
+node_modules
+vendor
+dist
+build
+coverage
+.midad
+.venv
+venv
+target
+bin
+obj</textarea></label>
+          </section>
+
+          <section class="settings-card">
+            <div class="settings-title"><div><h3>المحللات الدفاعية</h3><p>حدد المحللات المتاحة في هذه النسخة.</p></div></div>
+            <label class="check-row"><span><strong>المحلل الأساسي</strong><small>مؤشرات eval وSQL النصي وinnerHTML.</small></span><input id="analyzer-builtin" type="checkbox" checked></label>
+            <label class="check-row"><span><strong>التحليل البنيوي JavaScript / TypeScript</strong><small>يفهم البنية النحوية ويقلل الالتقاط الخاطئ داخل التعليقات والنصوص.</small></span><input id="analyzer-ast" type="checkbox" checked></label>
+            <label class="check-row"><span><strong>أنماط الأسرار</strong><small>البحث المحلي عن قيم اعتماد مكتوبة داخل الملفات، دون إظهار القيمة.</small></span><input id="analyzer-secrets" type="checkbox"></label>
+            <label class="check-row disabled-row"><span><strong>Semgrep</strong><small>غير مربوط بعد — سيضاف بعد تثبيت واعتماد المحرك.</small></span><input type="checkbox" disabled></label>
+            <label class="check-row"><span><strong>جرد الاعتماديات</strong><small>يقرأ ملفات الحزم المحلية ويستخرج الأسماء والإصدارات دون اتصال أو إثبات للثغرات.</small></span><input id="analyzer-dependencies" type="checkbox"></label>
+            
+          </section>
+
+          <section class="settings-card">
+            <div class="settings-title"><div><h3>حدود الموارد والنتائج</h3><p>تتحكم هذه القيم بحجم الفحص ووقته.</p></div></div>
+            <div class="settings-grid">
+              <label class="field">الحد الأقصى للملفات<input id="max-files" type="number" min="1" max="50000"></label>
+              <label class="field">حجم الملف الأقصى (MB)<input id="max-file-mb" type="number" min="1" max="100"></label>
+              <label class="field">الحجم الإجمالي (MB)<input id="max-total-mb" type="number" min="1" max="2048"></label>
+              <label class="field">الحد الأقصى للنتائج<input id="max-findings" type="number" min="1" max="10000"></label>
+              <label class="field">المهلة (ثانية)<input id="timeout-sec" type="number" min="5" max="900"></label>
+              <label class="field">أقل مستوى خطورة
+                <select id="severity">
+                  <option value="info">معلوماتي</option><option value="low">منخفض</option>
+                  <option value="medium">متوسط</option><option value="high">مرتفع</option><option value="critical">حرج</option>
+                </select>
+              </label>
+            </div>
+          </section>
+
+          <section class="settings-card">
+            <div class="settings-title"><div><h3>الخصوصية والضوابط الثابتة</h3><p>هذه الحماية لا يمكن تعطيلها من واجهة الإعدادات.</p></div></div>
+            <div class="locked-row"><span><strong>اتصال الشبكة</strong><small>مغلق في هذه المرحلة.</small></span><span class="locked">مقفل</span></div>
+            <div class="locked-row"><span><strong>تشغيل كود المشروع</strong><small>ممنوع؛ التحليل ساكن ويقرأ الملفات فقط.</small></span><span class="locked">مقفل</span></div>
+            <div class="locked-row"><span><strong>إظهار قيم الأسرار</strong><small>تُحجب القيم الحساسة في التقارير.</small></span><span class="locked">حجب دائم</span></div>
+            <label class="check-row"><span><strong>الاحتفاظ بمقتطفات الكود</strong><small>عند تفعيلها قد يظهر مقتطف من السطر بعد حجب القيمة المكتشفة.</small></span><input id="retain-snippets" type="checkbox"></label>
+            <label class="check-row disabled-row"><span><strong>تطبيق الإصلاحات على الملفات</strong><small>غير متاح حتى إضافة معاينة فروق وموافقة منفصلة لكل ملف.</small></span><input type="checkbox" disabled></label>
+          </section>
+
+          <div class="form-actions"><button class="button ghost" type="button" id="cancel-settings">إلغاء</button><button class="button primary" type="submit">حفظ السياسات</button></div>
+          <p class="save-status" id="save-status" role="status"></p>
+        </form>
+      </section>
+    </main>
+  </div>
+  <div class="toast hidden" id="toast" role="status"></div>
+</body>
+</html>

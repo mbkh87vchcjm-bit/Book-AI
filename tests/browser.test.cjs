@@ -109,10 +109,47 @@ async function createScannedPdf(page) {
   return imagePdf(images.map(x => Buffer.from(x, 'base64')));
 }
 
+
+async function createStandaloneImage(page) {
+  const encoded = await page.evaluate(() => {
+    const canvas = document.createElement('canvas');
+    canvas.width = 1200; canvas.height = 900;
+    const ctx = canvas.getContext('2d');
+    ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.fillStyle = '#111'; ctx.direction = 'rtl'; ctx.textAlign = 'right';
+    ctx.font = '64px OcrNaskh';
+    ctx.fillText('التحليل الأمني للمراجع', 1120, 220);
+    ctx.font = '42px OcrNaskh';
+    ctx.fillText('يجب مراجعة النص مع الصورة الأصلية', 1120, 310);
+    return canvas.toDataURL('image/png').split(',')[1];
+  });
+  return Buffer.from(encoded, 'base64');
+}
+
 (async () => {
   const localServer = await server();
   const url = `http://127.0.0.1:${localServer.address().port}/`;
   try {
+    {
+      const scope = await browserPage(url), page = scope.page;
+      const image = await createStandaloneImage(page);
+      await page.locator('#file-input').setInputFiles({name:'standalone-reference.png',mimeType:'image/png',buffer:image});
+      await page.waitForFunction(() => document.querySelector('#stop-btn').hidden, null, {timeout:60000});
+      await closeImportNotice(page);
+      assert.equal(await page.locator('.source-item').count(),1);
+      assert.match(await page.locator('.source-item').innerText(),/صورة مفردة/);
+      await page.locator('#mobile-sources').click();
+      await page.locator('.source-item-copy').click();
+      assert.equal(await page.locator('.ocr-preview').count(),1);
+      await page.locator('#edit-page').click();
+      await page.locator('#page-edit').fill('التحليل الأمني للمراجع يتطلب مقارنة النص بالصورة الأصلية.');
+      await page.locator('#edit-save').click();
+      assert.match(await page.locator('.excerpt-text').innerText(),/التحليل الأمني للمراجع/);
+      const stateBytes = await page.evaluate(() => new Blob([localStorage.getItem('midad-state-v1') || '']).size);
+      assert.ok(stateBytes < 5 * 1024 * 1024, 'image previews must stay within browser storage quota');
+      await finish(scope,'Standalone image import, local OCR preview and manual text correction');
+    }
+
     for (const [label, address] of [['HTTP', url], ['file URL', pathToFileURL(path.join(web, 'index.html')).href]]) {
       const scope = await browserPage(address), page = scope.page;
       await upload(page, 'physics.pdf');
@@ -319,8 +356,16 @@ async function createScannedPdf(page) {
       await page.locator('#allow-math').locator('..').click(); await page.locator('#ocr-enabled').locator('..').click(); await page.locator('#save-settings').click();
       await ask(page, 'احسب 12 × 5'); assert.match(await page.locator('.message.assistant').last().innerText(), /لم أجد/);
       await upload(page, 'scanned.pdf'); assert.match(await closeImportNotice(page), /فعّل قراءة الصور/);
-      assert.equal(await page.locator('.source-item').count(), 0);
-      await finish(scope, 'Local calculation and enforceable strict, calculation and OCR controls');
+      assert.equal(await page.locator('.source-item').count(), 1);
+      await page.locator('#mobile-sources').click();
+      await page.locator('.source-item-copy').click();
+      assert.equal(await page.locator('.ocr-preview').count(), 1);
+      assert.match(await page.locator('.modal').innerText(), /لم تتم محاولة OCR/);
+      await page.locator('#edit-page').click();
+      await page.locator('#page-edit').fill('نص يدوي بعد مراجعة صورة الصفحة.');
+      await page.locator('#edit-save').click();
+      assert.match(await page.locator('.excerpt-text').innerText(), /نص يدوي بعد مراجعة صورة الصفحة/);
+      await finish(scope, 'Local calculation, OCR settings and retaining skipped image pages for manual review');
     }
 
     {

@@ -6,9 +6,9 @@
  * This is a corpus-specific retrieval aid, not a text generator or LLM.
  */
 (function (root, factory) {
-  if (typeof module === 'object' && module.exports) module.exports = factory(require('./engine.js'));
-  else root.MidadNeural = factory(root.MidadEngine);
-}(typeof globalThis !== 'undefined' ? globalThis : this, function (E) {
+  if (typeof module === 'object' && module.exports) module.exports = factory(require('./engine.js'), require('./source-quality.js'));
+  else root.MidadNeural = factory(root.MidadEngine, root.MidadSourceQuality);
+}(typeof globalThis !== 'undefined' ? globalThis : this, function (E, SourceQuality) {
   'use strict';
 
   var VERSION = 2;
@@ -27,6 +27,18 @@
 
   // Do not train context pairs across sentence or paragraph boundaries.
   // Very long sentences are divided into bounded windows with a small overlap.
+  function selectRepresentativePages(pages, maximum) {
+    var list = Array.isArray(pages) ? pages : [];
+    var count = Math.max(0, Math.min(list.length, Number(maximum) || list.length));
+    if (!count) return [];
+    if (count >= list.length) return list.slice();
+    var selected = [], seen = new Set();
+    for (var i = 0; i < count; i++) {
+      var index = count === 1 ? Math.floor((list.length - 1) / 2) : Math.round(i * (list.length - 1) / (count - 1));
+      if (!seen.has(index)) { seen.add(index); selected.push(list[index]); }
+    }
+    return selected;
+  }
   function splitSequences(text, maxSequenceTokens, overlap) {
     var fragments = String(text || '').replace(/\r\n?/g, '\n').split(/[\n.!?؟؛]+/);
     var output = [];
@@ -160,6 +172,8 @@
       trainingSequences: metadata && metadata.trainingSequences || 0,
       trainedTokens: metadata && metadata.trainedTokens || 0,
       trainedPairs: metadata && metadata.trainedPairs || 0,
+      corpusPageCount: metadata && metadata.corpusPageCount || 0,
+      sampledPageCount: metadata && metadata.sampledPageCount || 0,
       similarity: similarity,
       similarityDetails: similarityDetails,
       embed: embed,
@@ -181,7 +195,9 @@
           weights: packedWeights,
           trainingSequences: metadata && metadata.trainingSequences || 0,
           trainedTokens: metadata && metadata.trainedTokens || 0,
-          trainedPairs: metadata && metadata.trainedPairs || 0
+          trainedPairs: metadata && metadata.trainedPairs || 0,
+          corpusPageCount: metadata && metadata.corpusPageCount || 0,
+          sampledPageCount: metadata && metadata.sampledPageCount || 0
         };
       }
     };
@@ -197,29 +213,38 @@
     var maxSequenceTokens = Math.max(12, Math.min(160, Number(options.maxSequenceTokens) || DEFAULTS.maxSequenceTokens));
     var overlap = Math.min(windowSize, Math.max(1, Math.floor(maxSequenceTokens / 8)));
     var sequences = [], totalChars = 0, totalTokens = 0, seedParts = [];
-
+    var corpusPages = [];
     (Array.isArray(documents) ? documents : []).forEach(function (doc) {
       (doc && Array.isArray(doc.pages) ? doc.pages : []).forEach(function (page) {
-        if (totalChars >= maxChars || totalTokens >= maxTokens) return;
-        var text = String(page && page.text || '');
-        if (!text) return;
-        var remainingChars = maxChars - totalChars;
-        if (text.length > remainingChars) text = text.slice(0, remainingChars);
-        totalChars += text.length;
-        seedParts.push(String(doc.id || '') + ':' + String(page.page || '') + ':' + text.slice(0, 120));
-
-        var pieces = splitSequences(text, maxSequenceTokens, overlap);
-        pieces.forEach(function (tokens) {
-          if (totalTokens >= maxTokens) return;
-          var remainingTokens = maxTokens - totalTokens;
-          if (tokens.length > remainingTokens) tokens = tokens.slice(0, remainingTokens);
-          if (tokens.length < 2) return;
-          sequences.push(tokens);
-          totalTokens += tokens.length;
-        });
+        if (!page || (SourceQuality && !SourceQuality.isUsablePage(page))) return;
+        var sourceText = SourceQuality ? SourceQuality.searchableText(page) : String(page.text || '');
+        if (!sourceText.trim()) return;
+        corpusPages.push({docId: String(doc.id || ''), docName: String(doc.name || ''), page: Number(page.page) || 0, text: sourceText});
       });
     });
-
+    if (!corpusPages.length) return null;
+    // Evenly sample pages across the whole reference set so the first chapters
+    // do not consume the entire local embedding budget.
+    var maximumSampledPages = Math.max(1, Math.floor(maxTokens / 2));
+    var sampledPages = selectRepresentativePages(corpusPages, maximumSampledPages);
+    var charsPerPage = Math.max(1, Math.floor(maxChars / sampledPages.length));
+    var tokensPerPage = Math.max(2, Math.floor(maxTokens / sampledPages.length));
+    sampledPages.forEach(function (page) {
+      if (totalChars >= maxChars || totalTokens >= maxTokens) return;
+      var text = page.text.slice(0, charsPerPage);
+      totalChars += text.length;
+      seedParts.push(page.docId + ':' + page.page + ':' + text.slice(0, 120));
+      var remainingPageTokens = tokensPerPage;
+      splitSequences(text, maxSequenceTokens, overlap).forEach(function (tokens) {
+        if (remainingPageTokens < 2 || totalTokens >= maxTokens) return;
+        var take = Math.min(tokens.length, remainingPageTokens, maxTokens - totalTokens);
+        if (take < 2) return;
+        var bounded = tokens.slice(0, take);
+        sequences.push(bounded);
+        totalTokens += bounded.length;
+        remainingPageTokens -= bounded.length;
+      });
+    });
     if (totalTokens < 80 || sequences.length < 2) return null;
 
     var counts = Object.create(null);
@@ -354,7 +379,9 @@
     return createModel(vocabulary, input, weights, dim, {
       trainingSequences: indexed.length,
       trainedTokens: tokenCount,
-      trainedPairs: trainedPairs
+      trainedPairs: trainedPairs,
+      corpusPageCount: corpusPages.length,
+      sampledPageCount: sampledPages.length
     });
   }
 
@@ -390,7 +417,9 @@
     return createModel(vocab.slice(), vectors, weights, dim, {
       trainingSequences: Math.max(0, Number(data.trainingSequences) || 0),
       trainedTokens: Math.max(0, Number(data.trainedTokens) || 0),
-      trainedPairs: Math.max(0, Number(data.trainedPairs) || 0)
+      trainedPairs: Math.max(0, Number(data.trainedPairs) || 0),
+      corpusPageCount: Math.max(0, Number(data.corpusPageCount) || 0),
+      sampledPageCount: Math.max(0, Number(data.sampledPageCount) || 0)
     });
   }
 
@@ -399,6 +428,7 @@
     restore: restore,
     tokenize: tokenize,
     splitSequences: splitSequences,
+    selectRepresentativePages: selectRepresentativePages,
     defaults: DEFAULTS,
     version: VERSION,
     algorithm: ALGORITHM

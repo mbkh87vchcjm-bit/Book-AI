@@ -51,9 +51,10 @@ test('WebView hardening disables mixed content, Safe Browsing, debugging and sec
   assert.match(activity, /setGeolocationEnabled\(false\)/);
 });
 
-test('document picker accepts only content URIs and known document MIME types', () => {
+test('document picker accepts content URIs and known document/image MIME types', () => {
   assert.match(activity, /"application\/pdf", "text\/plain", "text\/markdown"/);
   assert.match(activity, /"content"\.equalsIgnoreCase\(uri\.getScheme\(\)\)/);
+  assert.match(activity, /"image\/png", "image\/jpeg", "image\/webp"/);
   assert.match(activity, /isContentDocumentUri\(uri\)/);
 });
 

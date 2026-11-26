@@ -99,10 +99,74 @@
     'network traffic according to rules': 'حركة مرور الشبكة وفق قواعد محددة'
   };
 
+  function resolveSubject(lexicon, value) {
+    var subject = String(value || '').trim().replace(/^(?:the|a|an)\s+/i, '');
+    var abbreviation = subject.match(/\(([A-Za-z0-9.+#/-]{2,12})\)\s*$/);
+    if (abbreviation) {
+      var byAbbreviation = exactTerm(lexicon, abbreviation[1]);
+      if (byAbbreviation) return byAbbreviation;
+    }
+    return exactTerm(lexicon, subject);
+  }
+
+  // A deliberately narrow definition template: translate only when the subject,
+  // predicate type, verb and object are all explicitly covered by the local glossary.
+  // This avoids presenting word substitutions as a complete sentence translation.
+  var DEFINITION_TYPES = {
+    'system': 'نظام',
+    'protocol': 'بروتوكول',
+    'connection oriented protocol': 'بروتوكول موجه بالاتصال',
+    'connectionless protocol': 'بروتوكول غير موجه بالاتصال',
+    'network layer protocol': 'بروتوكول طبقة الشبكة',
+    'application layer protocol': 'بروتوكول طبقة التطبيق',
+    'database management system': 'نظام إدارة قواعد البيانات'
+  };
+
+  var DEFINITION_OBJECTS = {
+    'reliable data transmission': 'نقل البيانات الموثوق',
+    'reliable and ordered data transmission': 'نقل البيانات الموثوق والمرتب',
+    'domain names into ip addresses': 'أسماء النطاقات إلى عناوين IP',
+    'ip addresses automatically to devices': 'عناوين IP للأجهزة تلقائيًا',
+    'network traffic according to rules': 'حركة مرور الشبكة وفق قواعد محددة'
+  };
+
+  var DEFINITION_VERBS = {
+    'provides': 'يوفر',
+    'provide': 'يوفر',
+    'translates': 'يحوّل',
+    'translate': 'يحوّل',
+    'contains': 'يحتوي على',
+    'contain': 'يحتوي على',
+    'manages': 'يدير',
+    'manage': 'يدير',
+    'controls': 'يتحكم في',
+    'control': 'يتحكم في',
+    'assigns': 'يوزع',
+    'assign': 'يوزع'
+  };
+
+  function translateKnownDefinition(original, lexicon) {
+    var match = String(original || '').trim().match(/^(.+?)\s+is\s+(?:a|an|the)\s+(.+?)\s+that\s+(provides|provide|translates|translate|contains|contain|manages|manage|controls|control|assigns|assign)\s+(.+?)[.!?]?\s*$/i);
+    if (!match) return null;
+    var subject = resolveSubject(lexicon, match[1]);
+    var type = DEFINITION_TYPES[normalizeEnglishPhrase(match[2])];
+    var verb = DEFINITION_VERBS[match[3].toLowerCase()];
+    var object = DEFINITION_OBJECTS[normalizeEnglishPhrase(match[4])];
+    if (!subject || !subject.term_ar || !type || !verb || !object) return null;
+    return {
+      original: original,
+      translated: subject.term_ar + ' هو ' + type + ' ' + verb + ' ' + object + '.',
+      status: 'complete',
+      confidence: 0.88,
+      structured: true,
+      translationType: 'structured-definition-rule'
+    };
+  }
+
   function translateKnownSentence(original, lexicon) {
     var match = String(original || '').trim().match(/^(.+?)\s+(provides|provide|translates|translate|contains|contain|manages|manage|controls|control|executes|execute|identifies|identify)\s+(.+?)[.!?]?\s*$/i);
     if (!match) return null;
-    var subject = exactTerm(lexicon, match[1]);
+    var subject = resolveSubject(lexicon, match[1]);
     var verbEntry = VERB_MAP[match[2].toLowerCase()];
     var objectArabic = OBJECT_PHRASES[normalizeEnglishPhrase(match[3])];
     if (!subject || !subject.term_ar || !verbEntry || !objectArabic) return null;
@@ -112,10 +176,10 @@
       translated: subject.term_ar + ' ' + verbArabic + ' ' + objectArabic + '.',
       status: 'complete',
       confidence: 0.9,
-      structured: true
+      structured: true,
+      translationType: 'structured-rule'
     };
   }
-
   function translateSentence(sentence, learningStore) {
     var original = String(sentence || '').trim();
     if (!original) return { translated: '', confidence: 0, status: 'empty' };
@@ -135,13 +199,16 @@
 
     var lexicon = getLexicon();
 
+    var definition = translateKnownDefinition(original, lexicon);
+    if (definition) return definition;
+
     var structured = translateKnownSentence(original, lexicon);
     if (structured) return structured;
 
     // Exact phrase lookup only; substring matches can map 'data' to 'datagram'.
     var phraseMatch = exactTerm(lexicon, original);
     if (phraseMatch && phraseMatch.term_ar) {
-      return { translated: phraseMatch.term_ar, confidence: 0.95, status: 'complete' };
+      return {original: original, translated: phraseMatch.term_ar, confidence: 0.95, status: 'complete', structured: true, translationType: 'phrase'};
     }
 
     var tokens = original.match(/[a-zA-Z0-9]+|[^\s\w]/g) || [];

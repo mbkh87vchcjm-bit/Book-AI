@@ -1,8 +1,8 @@
 /* Local, deterministic retrieval helpers. Standard BM25 & Cross-Language Lexicon Expansion. */
 (function (root, factory) {
-  if (typeof module === 'object' && module.exports) module.exports = factory(require('./mlke-lexicon.js'));
-  else root.MidadEngine = factory(root.MlkeLexicon);
-}(typeof globalThis !== 'undefined' ? globalThis : this, function (LexiconClass) {
+  if (typeof module === 'object' && module.exports) module.exports = factory(require('./mlke-lexicon.js'), require('./source-quality.js'));
+  else root.MidadEngine = factory(root.MlkeLexicon, root.MidadSourceQuality);
+}(typeof globalThis !== 'undefined' ? globalThis : this, function (LexiconClass, SourceQuality) {
   'use strict';
 
   // Minimum confidence for the v2 local semantic signal to enter RRF.
@@ -202,7 +202,8 @@
     overlap = overlap === undefined ? 110 : Math.max(0, Number(overlap) || 0);
     var out = [];
     (doc.pages || []).forEach(function (page) {
-      var source = String(page.text || '');
+      if (SourceQuality && !SourceQuality.isUsablePage(page)) return;
+      var source = SourceQuality ? SourceQuality.searchableText(page) : String(page.text || '');
       if (!source.trim()) return;
       var units = [], lines = source.split(/\n/), offset = 0, paragraphStart = -1, paragraphEnd = -1;
       function pushParagraph() {
@@ -270,7 +271,7 @@
         if (!piece) return;
         out.push({docId: doc.id, docName: doc.name, page: page.page, type: doc.type,
           text: piece, offset: start, endOffset: end, structure: segment.kind,
-          ocr: !!page.ocr});
+          ocr: !!page.ocr, ocrStats: page.ocrStats || null, edited: page.edited === true});
       }
       segments.forEach(function (segment) {
         if (!pending) { pending = segment; return; }
@@ -391,11 +392,16 @@
   }
 
   function search(documents, query, limit, priorQuery, learningStore, semanticModel) {
+    documents = Array.isArray(documents) ? documents : [];
     limit = Math.max(1, Math.min(120, Number(limit) || 3));
     var all = [];
-    (documents || []).forEach(function (doc) { all = all.concat(chunksForDocument(doc)); });
+    documents.forEach(function (doc) { all = all.concat(chunksForDocument(doc)); });
     var emptyStats = {bm25: 0, character: 0, phrase: 0, semantic: 0};
-    if (!all.length) return {references: [], overview: false, queryWords: [], retrievalStats: emptyStats};
+    var corpusStats = SourceQuality && SourceQuality.summarizeDocuments
+      ? SourceQuality.summarizeDocuments(documents)
+      : {documents: documents.length, totalPages: 0, storedPages: 0, searchablePages: 0, totalCharacters: 0, indexedCoverage: 0, lowConfidenceOcrPages: 0};
+    corpusStats.totalChunks = all.length;
+    if (!all.length) return {references: [], overview: false, queryWords: [], retrievalStats: emptyStats, corpusStats: corpusStats};
 
     var rawTerms = words(query);
     if (!rawTerms.length && priorQuery) rawTerms = words(priorQuery);
@@ -413,9 +419,9 @@
         var chosenIndex = sampleCount <= 1 ? 0 : Math.round(pageIndex * (pages.length - 1) / (sampleCount - 1));
         samples.push(pages[chosenIndex]);
       }
-      return {references: samples, overview: true, queryWords: rawTerms, retrievalStats: emptyStats};
+      return {references: samples, overview: true, queryWords: rawTerms, retrievalStats: emptyStats, corpusStats: corpusStats};
     }
-    if (!rawTerms.length) return {references: [], overview: false, queryWords: rawTerms, retrievalStats: emptyStats};
+    if (!rawTerms.length) return {references: [], overview: false, queryWords: rawTerms, retrievalStats: emptyStats, corpusStats: corpusStats};
 
     var normalizedQuery = normalize(query);
     var termWeights = Object.create(null);
@@ -544,7 +550,8 @@
         return String(all[item.index].docId) + ':' + String(all[item.index].page);
       }),
       retrievalStats: {bm25: bm25.length, character: character.length, phrase: phrase.length, semantic: semantic.length},
-      retrievalDiagnostics: diagnostics
+      retrievalDiagnostics: diagnostics,
+      corpusStats: corpusStats
     };
   }
 

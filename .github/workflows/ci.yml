@@ -57,3 +57,62 @@ jobs:
         with:
           name: Midad-2.0.0-local-apk
           path: release/Midad-2.0.0-local.apk
+
+
+  windows-desktop:
+    runs-on: windows-2022
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: desktop/package.json
+
+      - name: Install desktop build dependencies
+        working-directory: desktop
+        run: npm install --no-audit --no-fund
+
+      - name: Verify Electron runtime version
+        working-directory: desktop
+        run: npm run electron:version
+
+      - name: Syntax-check Electron entry points
+        working-directory: desktop
+        run: |
+          node --check main.cjs
+          node --check preload.cjs
+          node --check cyber/renderer/app.js
+          node --check cyber/core/sbom-export.cjs
+
+      - name: Run desktop cyber parser and inventory tests
+        working-directory: desktop
+        run: npm run test:cyber
+
+      - name: Build Windows x64 installer and portable app
+        working-directory: desktop
+        run: npm run dist:win
+
+      - name: Generate SHA-256 checksums
+        working-directory: desktop
+        shell: pwsh
+        run: |
+          $files = Get-ChildItem .\release\*.exe
+          if ($files.Count -ne 2) { throw ('Expected installer and portable EXE; found ' + $files.Count) }
+          $lines = $files | Get-FileHash -Algorithm SHA256 | ForEach-Object { '{0}  {1}' -f $_.Hash, [System.IO.Path]::GetFileName($_.Path) }
+          $lines | Set-Content .\release\SHA256SUMS.txt -Encoding ascii
+          Get-Content .\release\SHA256SUMS.txt
+
+      - name: Upload Windows artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: Midad-Cyber-Windows-x64
+          path: |
+            desktop/release/Midad-Cyber-Setup-*-x64.exe
+            desktop/release/Midad-Cyber-Portable-*-x64.exe
+            desktop/release/SHA256SUMS.txt
+          if-no-files-found: error
+          retention-days: 14

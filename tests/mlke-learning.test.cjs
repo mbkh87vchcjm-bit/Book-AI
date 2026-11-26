@@ -138,3 +138,19 @@ test('Learning Scenario 5: Term extraction returns structured table and provenan
   assert.match(res.text, /DNS/);
   assert.equal(res.references.length, 2);
 });
+
+
+test('researcher-confirmed translation corrections are used in the actual evidence renderer', () => {
+  const store = new LearningStore();
+  const original = 'Firewall controls network traffic.';
+  const corrected = 'جدار الحماية يتحكم في حركة مرور الشبكة.';
+  store.recordCorrection({type:'translation',original,corrected,status:'user-confirmed'});
+  const rendered = Answer.renderEvidenceItem({
+    text:original,
+    ref:{docName:'Firewall.pdf',page:4,type:'pdf'}
+  },0,'ar',store);
+  assert.match(rendered,/ترجمة صححها الباحث واعتمدها/);
+  assert.match(rendered,new RegExp(corrected));
+  assert.match(rendered,/Firewall controls network traffic/);
+  assert.match(rendered,/Firewall.pdf/);
+});

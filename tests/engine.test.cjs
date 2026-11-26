@@ -279,3 +279,43 @@ test('semantic retrieval admission uses the v2 confidence threshold', () => {
   assert.equal(rejected.retrievalStats.semantic, 0);
   assert.deepEqual(rejected.references, []);
 });
+
+
+test('low-acceptance OCR pages are excluded from the search index until a human edits them', () => {
+  const docs = [{id:'scan',name:'Scan.pdf',type:'pdf',totalPages:3,pages:[
+    {page:1,text:'Routing chooses a path for packets.',extractionMethod:'text-layer'},
+    {page:2,text:'Routing routes packet information.',ocr:true,ocrStats:{recognitionRate:0.32}},
+    {page:3,text:'Routing is the process of selecting a network path.',ocr:true,ocrStats:{recognitionRate:0.32},edited:true}
+  ]}];
+  const chunks = E.chunksForDocument(docs[0]);
+  assert.ok(!chunks.some(chunk => chunk.page === 2));
+  assert.ok(chunks.some(chunk => chunk.page === 3));
+  const result = E.search(docs,'routing path',20);
+  assert.ok(result.references.some(ref => ref.page === 1));
+  assert.ok(result.references.some(ref => ref.page === 3));
+  assert.ok(!result.references.some(ref => ref.page === 2));
+  assert.equal(result.corpusStats.totalPages,3);
+  assert.equal(result.corpusStats.searchablePages,2);
+  assert.equal(result.corpusStats.lowConfidenceOcrPages,1);
+});
+
+
+test('low OCR confidence on a mixed page uses the native PDF text layer and drops noisy OCR additions', () => {
+  const docs = [{id:'mixed',name:'Mixed.pdf',type:'pdf',totalPages:1,pages:[{
+    page:1,
+    text:'DNS translates domain names into IP addresses.\nDNS names domains to IP □ addresses.',
+    textLayerText:'DNS translates domain names into IP addresses.',
+    extractionMethod:'text-layer+ocr',
+    ocr:true,
+    ocrStats:{recognitionRate:0.22}
+  }]}];
+  const chunks = E.chunksForDocument(docs[0]);
+  assert.ok(chunks.length>0);
+  assert.ok(chunks.every(chunk=>chunk.text.includes('DNS translates domain names')));
+  assert.ok(chunks.every(chunk=>!chunk.text.includes('□')));
+  const result=E.search(docs,'DNS IP addresses',10);
+  assert.ok(result.references.length>0);
+  assert.ok(result.references.every(ref=>!ref.text.includes('□')));
+  assert.equal(result.corpusStats.searchablePages,1);
+  assert.equal(result.corpusStats.lowConfidenceOcrPages,1);
+});

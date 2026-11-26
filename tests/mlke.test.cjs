@@ -111,3 +111,65 @@ test('Language detection distinguishes Arabic, English, mixed and empty input', 
   assert.equal(Query.detectLanguage('شبك Net'), 'mixed');
   assert.equal(Query.detectLanguage(''), 'unknown');
 });
+
+
+test('English technical sentence with a parenthesized abbreviation is recognized for constrained Arabic translation', () => {
+  const translated = Translator.translateSentence('The Domain Name System (DNS) translates domain names into IP addresses.');
+  assert.equal(translated.status,'complete');
+  assert.equal(translated.translationType,'structured-rule');
+  assert.match(translated.translated,/نظام أسماء النطاقات/);
+  assert.match(translated.translated,/عناوين IP/);
+  assert.match(translated.translated,/يحوّل/);
+});
+
+test('unknown English sentence is not promoted to a complete translation', () => {
+  const translated = Translator.translateSentence('A modern gateway dynamically inspects unusual encrypted sessions.');
+  assert.equal(translated.status,'partial');
+  assert.ok(Array.isArray(translated.unknownWords));
+  assert.ok(translated.unknownWords.length>0);
+});
+
+
+test('Arabic answer on an English definition uses a structured glossary translation and retains the source', () => {
+  const docs = [{id:'dns-en',name:'Networking English.pdf',type:'pdf',pages:[{
+    page:4,
+    text:'DNS is a system that translates domain names into IP addresses.'
+  }]}];
+  const result = Answer.answer({
+    documents:docs,
+    question:'ما وظيفة DNS؟',
+    mode:'strict'
+  });
+  assert.equal(result.origin,'source');
+  assert.match(result.text,/ترجمة معجمية تقريبية بقواعد محلية/);
+  assert.match(result.text,/نظام أسماء النطاقات هو نظام يحوّل أسماء النطاقات إلى عناوين IP/);
+  assert.match(result.text,/DNS is a system that translates domain names into IP addresses/);
+  assert.match(result.text,/الصفحة 4/);
+});
+
+test('structured definition pattern translates a known TCP definition without guessing', () => {
+  const translated = Translator.translateSentence(
+    'TCP is a connection-oriented protocol that provides reliable data transmission.'
+  );
+  assert.equal(translated.status,'complete');
+  assert.equal(translated.translationType,'structured-definition-rule');
+  assert.match(translated.translated,/بروتوكول موجه بالاتصال/);
+  assert.match(translated.translated,/يوفر نقل البيانات الموثوق/);
+});
+
+test('structured definition pattern translates a known DNS definition from exact glossary parts', () => {
+  const translated = Translator.translateSentence(
+    'DNS is a system that translates domain names into IP addresses.'
+  );
+  assert.equal(translated.status,'complete');
+  assert.match(translated.translated,/نظام أسماء النطاقات/);
+  assert.match(translated.translated,/يحوّل أسماء النطاقات إلى عناوين IP/);
+});
+
+test('unsupported definition predicates remain partial instead of receiving invented Arabic', () => {
+  const translated = Translator.translateSentence(
+    'DNS is a system that dynamically correlates encrypted sessions.'
+  );
+  assert.equal(translated.status,'partial');
+  assert.ok(translated.unknownWords.length>0);
+});
