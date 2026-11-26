@@ -8,7 +8,7 @@
 }(typeof globalThis !== 'undefined' ? globalThis : this, function () {
   'use strict';
   var SEVERITY = {info: 0, low: 1, medium: 2, high: 3, critical: 4};
-  var ANALYZERS = ['builtin', 'ast', 'semgrep', 'dependency-audit', 'secret-patterns'];
+  var ANALYZERS = ['builtin', 'ast', 'dependency-audit', 'secret-patterns'];
   var MODES = ['disabled', 'education', 'read-only', 'review'];
   var HARD_LIMITS = Object.freeze({
     maxFiles: 25000,
@@ -74,6 +74,8 @@
     // Platform guardrails are not user preferences.
     policy.capabilities.networkAccess = false;
     policy.capabilities.executeProjectCode = false;
+    // File-changing remediation is not implemented in this phase.
+    policy.capabilities.applyRemediations = false;
     policy.privacy.localOnly = true;
     policy.privacy.redactSecretValues = true;
     return policy;
@@ -114,6 +116,7 @@
       });
       if (policy.capabilities.networkAccess !== false) errors.push('network-access-locked');
       if (policy.capabilities.executeProjectCode !== false) errors.push('code-execution-locked');
+      if (policy.capabilities.applyRemediations !== false) errors.push('remediation-apply-not-implemented');
     }
     if (!policy.privacy || typeof policy.privacy.retainSourceSnippets !== 'boolean' ||
         policy.privacy.localOnly !== true || policy.privacy.redactSecretValues !== true) {
@@ -176,6 +179,7 @@
     var ctx = context || {}, validation = validatePolicy(policy);
     if (!validation.valid) return {allowed: false, reason: 'invalid-policy', details: validation.errors};
     if (!policy.enabled || policy.mode === 'disabled') return {allowed: false, reason: 'cyber-module-disabled'};
+    if (action === 'apply-fix') return {allowed: false, reason: 'remediation-application-not-implemented'};
     if (FIXED_DENIALS.indexOf(action) >= 0) return {allowed: false, reason: 'blocked-by-platform-safety-policy'};
     if (action === 'explain-concept' || action === 'compare-concepts' || action === 'generate-study-questions') {
       return {allowed: true, reason: 'educational-action'};
