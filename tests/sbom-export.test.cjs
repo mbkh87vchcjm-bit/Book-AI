@@ -47,7 +47,7 @@ test('lockfile versions are not linked to unmatched manifest versions by name al
     item.name === 'midad:declared-version-constraint' && item.value === '4.18.0'));
   assert.ok(expressDeclared.properties.some((item) =>
     item.name === 'midad:resolution-status' && item.value === 'declared-exact-version-not-found-in-lockfile'));
-  assert.ok(express.properties.some((item) =>
+  assert.ok(expressDeclared.properties.some((item) =>
     item.name === 'midad:relationship' && item.value === 'direct-runtime'));
   assert.equal(typescript.version, undefined);
   assert.ok(typescript.properties.some((item) =>
