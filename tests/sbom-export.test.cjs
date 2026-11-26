@@ -12,9 +12,10 @@ const report = {
     manifestsScanned: 3,
     packageCount: 3,
     packages: [
+      {name: 'express', version: '4.18.0', relationship: 'direct-runtime', manifest: 'package.json'},
       {name: 'express', version: '4.18.2', relationship: 'direct-or-top-level-lock', manifest: 'package-lock.json'},
       {name: 'typescript', version: '^5.0.0', relationship: 'direct-development', manifest: 'package.json'},
-      {name: '@scope/tool', version: '1.2.3', relationship: 'direct-optional', manifest: 'package-lock.json'}
+      {name: '@scope/tool', version: '1.2.3', relationship: 'locked-optional', manifest: 'package-lock.json'}
     ]
   }
 };
@@ -40,6 +41,11 @@ test('lockfile versions become versions while manifest constraints remain proper
   const express = bom.components.find((item) => item.name === 'express');
   const typescript = bom.components.find((item) => item.name === 'typescript');
   assert.equal(express.version, '4.18.2');
+  assert.equal(bom.components.filter((item) => item.name === 'express').length, 1);
+  assert.ok(express.properties.some((item) =>
+    item.name === 'midad:declared-version-constraint' && item.value === '4.18.0'));
+  assert.ok(express.properties.some((item) =>
+    item.name === 'midad:relationship' && item.value === 'direct-runtime'));
   assert.equal(typescript.version, undefined);
   assert.ok(typescript.properties.some((item) =>
     item.name === 'midad:declared-version-constraint' && item.value === '^5.0.0'));
@@ -58,7 +64,8 @@ test('known dependency scopes are represented and unknown scopes remain unset', 
   });
   const uncertainBom = Sbom.createCycloneDxSbom(uncertain);
   assert.equal(uncertainBom.components.find((item) => item.name === 'yarn-only-package').scope, undefined);
-  assert.equal(Sbom.componentScope('locked-unknown-scope'), null);
+  assert.equal(Sbom.knownScope('locked-unknown-scope'), null);
+  assert.equal(Sbom.mergeScope(['locked-unknown-scope']), null);
 });
 
 test('component references are unique and sensitive registry metadata is not emitted', () => {
