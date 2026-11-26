@@ -602,6 +602,44 @@
       notice.className = 'muted';
       notice.textContent = 'الإجابة مولدة محلياً وتحتاج إلى مراجعة الباحث والتحقق من المراجع. مِداد لم ينفذ أدوات أو أوامر.';
       answerBox.append(heading, content, notice);
+
+      const evidence = result.evidence || {};
+      const retrieval = evidence.retrieval || {};
+      const coverage = document.createElement('p');
+      coverage.className = 'muted';
+      coverage.textContent = 'مصادر السياق المحلي: ' +
+        (Number(retrieval.matchedToolRecords) || 0) + ' سجل أدوات، و' +
+        (Number(retrieval.matchedConceptRecords) || 0) + ' مفهوم أمني.';
+      answerBox.appendChild(coverage);
+
+      const sources = document.createElement('div');
+      sources.className = 'assistant-evidence';
+      const sourcesTitle = document.createElement('strong');
+      sourcesTitle.textContent = 'السجلات المحلية التي أُرسلت ضمن سياق الإجابة';
+      sources.appendChild(sourcesTitle);
+      const sourceItems = Array.isArray(evidence.tools) ? evidence.tools : [];
+      const conceptItems = Array.isArray(evidence.concepts) ? evidence.concepts : [];
+      if (!sourceItems.length && !conceptItems.length) {
+        const empty = document.createElement('p');
+        empty.textContent = 'لم يُعثر على مرجع محلي مطابق. تعامل مع الإجابة على أنها شرح عام غير مسنود بسجل أدوات داخل مِداد.';
+        sources.appendChild(empty);
+      }
+      sourceItems.forEach((item) => {
+        const line = document.createElement('p');
+        const reviewState = item.knowledgeStatus === 'reviewed-summary'
+          ? 'ملخص مراجع أولياً' : 'سجل غير مكتمل ويحتاج مراجعة';
+        line.textContent = 'أداة: ' + item.name + ' — ' + reviewState +
+          (item.documentation ? ' — ' + item.documentation : '');
+        sources.appendChild(line);
+      });
+      conceptItems.forEach((item) => {
+        const line = document.createElement('p');
+        const refs = Array.isArray(item.references) ? item.references : [];
+        line.textContent = 'مفهوم: ' + item.term +
+          (refs.length ? ' — ' + refs.map((ref) => ref.title + ' (' + ref.version + ')').join('؛ ') : ' — دون مرجع مسجل');
+        sources.appendChild(line);
+      });
+      answerBox.appendChild(sources);
     } catch (_) {
       answerBox.textContent = 'حدث خطأ أثناء الاتصال بخدمة النموذج المحلية.';
     } finally {

@@ -44,3 +44,23 @@ Model files, tool binaries, rules, and vulnerability databases must be imported 
 - Tool execution, network scanning, project code execution, exploitation, credential access, and automatic remediation remain disabled.
 - Model answers can be wrong. Researchers must verify conclusions against primary documentation and evidence.
 - GitHub and CI are development infrastructure, not the offline production deployment channel.
+
+
+## Phase 2.1 — Answer-path validation and retrieval improvements
+
+The first retrieval implementation matched the complete question text and a limited set of fields. That was insufficient for natural-language questions. It has been replaced with:
+
+- Arabic/English normalization and selected word-form handling.
+- Stop-word filtering and controlled synonyms.
+- Explicit intent cues for common research tasks, including source-code review, Android package analysis, memory forensics, SBOM creation, network traffic analysis, web/API assessment, cloud configuration review, AI model evaluation, and threat intelligence.
+- A bounded assistant-context builder that retrieves relevant tool records and security concepts separately.
+- Evidence metadata returned alongside a successful answer, so the interface can show which local records were supplied to the model.
+- Explicit no-match behavior: when the catalogue has no relevant record, the model is told not to invent tool capabilities or technical properties.
+
+This is expanded lexical retrieval with curated intent rules, not a vector embedding or full semantic search engine. Natural-language phrasing is supported where terms or intent cues overlap; arbitrary paraphrases are not guaranteed to retrieve the correct record. A future embedding-based retrieval layer should be benchmarked against a labelled bilingual question set before adoption.
+
+## What the tests prove — and do not prove
+
+Automated tests cover retrieval of representative Arabic/English questions, no-match behavior, ambiguous concepts such as Token, local model discovery, fixed loopback access, request limits, and IPC/UI wiring.
+
+These tests do not prove that a particular installed LLM will always answer correctly. Live answer quality must be measured on the actual workstation using the selected model and a reviewed question/answer benchmark. At present, each question is independent; chat history and multi-turn follow-up memory are not implemented. The application must not be described as trained or fine-tuned: this phase uses retrieval-augmented prompting with a pre-existing local model.

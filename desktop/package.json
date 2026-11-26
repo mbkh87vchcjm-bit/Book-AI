@@ -9,7 +9,7 @@
     "start:dev": "electron . --enable-logging",
     "electron:version": "electron --version",
     "dist:win": "electron-builder --win nsis portable --x64",
-    "test:cyber": "node --test ../tests/cyber-ast.test.cjs ../tests/dependency-inventory.test.cjs ../tests/sbom-export.test.cjs ../tests/cyber-phase2-integration.test.cjs"
+    "test:cyber": "node --test ../tests/cyber-ast.test.cjs ../tests/dependency-inventory.test.cjs ../tests/sbom-export.test.cjs ../tests/cyber-phase2-integration.test.cjs ../tests/tool-registry.test.cjs ../tests/local-ai.test.cjs ../tests/assistant-context.test.cjs"
   },
   "devDependencies": {
     "electron": "45.5.0",
@@ -46,8 +46,7 @@
           ]
         }
       ],
-      "signAndEditExecutable": false,
-      "icon": "assets/midad-cyber.ico"
+      "signAndEditExecutable": false
     },
     "nsis": {
       "oneClick": false,

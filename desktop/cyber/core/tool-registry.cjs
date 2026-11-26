@@ -438,7 +438,7 @@ function categoryMatches(tool,categoryId) {
 }
 function scoreTool(tool,query) {
   const q=normalize(query);
-  if (!q) return 1;
+  if (!q) return 10;
   const name=normalize(tool.name);
   const aliases=tool.aliases.map(normalize);
   const haystack=normalize([tool.name,tool.id,...tool.aliases,tool.categoryName,tool.categoryEnglish,tool.summary,tool.purpose||''].join(' '));

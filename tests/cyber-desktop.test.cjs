@@ -24,6 +24,10 @@ test('Windows Electron package is pinned and has a start command', () => {
   assert.equal(packageJson.build.asar, true);
   assert.deepEqual(packageJson.build.win.target.map((item) => item.target), ['nsis', 'portable']);
   assert.equal(packageJson.build.win.signAndEditExecutable, false);
+  assert.equal(Object.hasOwn(packageJson.build.win, 'icon'), false);
+  assert.ok(packageJson.scripts['test:cyber'].includes('tool-registry.test.cjs'));
+  assert.ok(packageJson.scripts['test:cyber'].includes('local-ai.test.cjs'));
+  assert.ok(packageJson.scripts['test:cyber'].includes('assistant-context.test.cjs'));
 });
 
 test('Electron main process enforces renderer isolation and sandboxing', () => {

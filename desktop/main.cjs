@@ -7,7 +7,7 @@ const Policy = require('./cyber/core/cyber-policy.js');
 const Scanner = require('./cyber/core/project-scanner.cjs');
 const Sbom = require('./cyber/core/sbom-export.cjs');
 const ToolRegistry = require('./cyber/core/tool-registry.cjs');
-const CyberKnowledge = require('./cyber/core/cyber-knowledge.js');
+const AssistantContext = require('./cyber/core/assistant-context.cjs');
 const LocalAI = require('./cyber/core/local-ai.cjs');
 const localAiClient = LocalAI.createLocalAiClient();
 
@@ -24,26 +24,7 @@ function isTrustedRenderer(event) {
 }
 
 function buildAssistantContext(question) {
-  const toolContext = ToolRegistry.buildKnowledgeContext(question, 8);
-  const normalized = CyberKnowledge.normalize(question);
-  const concepts = CyberKnowledge.concepts.filter((concept) => {
-    const names = [concept.term, concept.ar].concat(concept.aliases || []);
-    return names.some((name) => {
-      const candidate = CyberKnowledge.normalize(name);
-      return candidate.length >= 3 && normalized.includes(candidate);
-    });
-  }).slice(0, 6).map((concept) => ({
-    id: concept.id, term: concept.term, arabic: concept.ar, domain: concept.domain,
-    definition: concept.definition, distinction: concept.distinction,
-    references: CyberKnowledge.getReferences(concept)
-  }));
-  return JSON.stringify({
-    toolCatalogue: toolContext,
-    securityConcepts: concepts,
-    platformRules: {offlineRuntimeOnly: true, toolExecutionEnabled: false,
-      networkScanningEnabled: false, projectCodeExecutionEnabled: false,
-      note: 'الكتالوج مرجع معرفي؛ مِداد لا يشغّل الأدوات ولا يختبر أهدافاً.'}
-  });
+  return AssistantContext.buildAssistantContext(question);
 }
 
 function policyFilePath() {
@@ -135,7 +116,21 @@ ipcMain.handle('cyber:ask-local-model', async (event, input) => {
   const question = String(input && input.question || '').trim();
   const model = String(input && input.model || '').trim();
   if (!question || question.length > 4000) return {ok: false, error: 'question-invalid'};
-  return localAiClient.ask({model, question, context: buildAssistantContext(question)});
+  const contextObject = buildAssistantContext(question);
+  const result = await localAiClient.ask({model, question, context: JSON.stringify(contextObject)});
+  if (result.ok) {
+    result.evidence = {
+      retrieval: contextObject.retrieval,
+      tools: contextObject.toolCatalogue.records.map((tool) => ({
+        name: tool.name, knowledgeStatus: tool.knowledgeStatus,
+        documentation: tool.documentation
+      })),
+      concepts: contextObject.securityConcepts.map((concept) => ({
+        term: concept.term, references: concept.references
+      }))
+    };
+  }
+  return result;
 });
 
 ipcMain.handle('cyber:choose-project', async () => {
