@@ -66,3 +66,11 @@ Official references:
 - OWASP Cross Site Scripting Prevention: https://cheatsheetseries.owasp.org/cheatsheets/Cross_Site_Scripting_Prevention_Cheat_Sheet.html
 
 The glossary also includes XSS, CSRF, IDOR/BOLA, SSRF, session management, MFA, RBAC, input validation, CVE/CWE/CVSS, SBOM, and SCA distinctions. Automated tests ensure that each declared source identifier resolves to a versioned source record.
+
+
+## Phase 1.3 — Partial CycloneDX SBOM
+
+The dependency inventory can now be exported as CycloneDX 1.7 JSON. The document identifies itself as a partial, pre-build manifest inventory; exact versions are separated from version constraints, optional and development dependencies receive distinct scope labels, and source manifest paths are kept as local metadata. The exporter omits registry URLs, integrity hashes, and download metadata.
+
+This is not a complete SBOM or SCA result. Dependency relationships are not resolved, no PURLs or cryptographic component hashes are generated, license identification is not implemented, and no CVE feed is consulted. The app remains offline. The export must not be described as proof of safety or of vulnerability absence.
+
