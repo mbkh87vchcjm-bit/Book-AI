@@ -122,12 +122,22 @@
   }
   function fileLimitDecision(fileInfo, policyInput, totals) {
     var policy = policyInput && policyInput.limits ? policyInput : createPolicy(policyInput);
-    var info = fileInfo || {}, count = Number(totals && totals.fileCount) || 0;
-    var totalBytes = Number(totals && totals.totalBytes) || 0, size = Number(info.sizeBytes);
+    var info = fileInfo || {}, count = Number(totals && totals.fileCount);
+    var totalBytes = Number(totals && totals.totalBytes), size = Number(info.sizeBytes);
+    if (!Number.isSafeInteger(count) || count < 0 || !Number.isSafeInteger(totalBytes) || totalBytes < 0) {
+      return {allowed: false, reason: 'scan-totals-invalid'};
+    }
     if (!Number.isSafeInteger(size) || size < 0) return {allowed: false, reason: 'file-size-invalid'};
     if (count >= policy.limits.maxFiles) return {allowed: false, reason: 'max-files-exceeded'};
     if (size > policy.limits.maxFileBytes) return {allowed: false, reason: 'max-file-bytes-exceeded'};
     if (totalBytes + size > policy.limits.maxTotalBytes) return {allowed: false, reason: 'max-total-bytes-exceeded'};
+    return {allowed: true, reason: 'within-limits'};
+  }
+  function findingLimitDecision(currentFindings, policyInput) {
+    var policy = policyInput && policyInput.limits ? policyInput : createPolicy(policyInput);
+    var count = Number(currentFindings);
+    if (!Number.isSafeInteger(count) || count < 0) return {allowed: false, reason: 'finding-count-invalid'};
+    if (count >= policy.limits.maxFindings) return {allowed: false, reason: 'max-findings-exceeded'};
     return {allowed: true, reason: 'within-limits'};
   }
   function authorizeAction(action, policyInput, context) {
@@ -168,7 +178,7 @@
     if (action === 'apply-fix') {
       if (policy.mode !== 'review') return {allowed: false, reason: 'review-mode-required'};
       if (ctx.userApproved !== true) return {allowed: false, reason: 'explicit-user-approval-required'};
-      if (ctx.changeSummary && typeof ctx.changeSummary !== 'string') return {allowed: false, reason: 'change-summary-invalid'};
+      if (typeof ctx.changeSummary !== 'string' || !ctx.changeSummary.trim()) return {allowed: false, reason: 'change-summary-required'};
     }
     return {allowed: true, reason: 'authorized'};
   }
@@ -187,6 +197,6 @@
     DEFAULTS: DEFAULTS, MODES: MODES.slice(), ANALYZERS: ANALYZERS.slice(), FIXED_DENIALS: FIXED_DENIALS.slice(),
     createPolicy: createPolicy, validatePolicy: validatePolicy, normalizeRelativePath: normalizeRelativePath,
     pathDecision: pathDecision, fileLimitDecision: fileLimitDecision, authorizeAction: authorizeAction,
-    shouldReportSeverity: shouldReportSeverity, redactSecret: redactSecret
+    findingLimitDecision: findingLimitDecision, shouldReportSeverity: shouldReportSeverity, redactSecret: redactSecret
   };
 }));
