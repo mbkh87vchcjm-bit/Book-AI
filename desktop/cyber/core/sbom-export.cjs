@@ -20,7 +20,8 @@ function componentScope(relationship) {
   const value = String(relationship || '').toLowerCase();
   if (value.includes('development') || value.includes('test')) return 'excluded';
   if (value.includes('optional')) return 'optional';
-  return 'required';
+  if (['direct-runtime', 'direct-or-top-level-lock', 'transitive', 'direct-or-declared', 'locked-runtime'].includes(value)) return 'required';
+  return null;
 }
 
 function componentRef(pkg, index) {
@@ -77,9 +78,10 @@ function createCycloneDxSbom(report, options = {}) {
       type: 'library',
       'bom-ref': componentRef({name, version, relationship, manifest}, index),
       name,
-      scope: componentScope(relationship),
       properties
     };
+    const scope = componentScope(relationship);
+    if (scope) component.scope = scope;
     if (isExactVersion(version)) component.version = version;
     components.push(component);
   });
