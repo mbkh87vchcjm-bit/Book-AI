@@ -61,3 +61,6 @@ The CI workflow builds on a Windows runner; Linux CI does not cross-compile this
 ### Structural JavaScript / TypeScript analysis
 
 The desktop package embeds the pinned @babel/parser runtime dependency and enables a local AST-based review for JavaScript, JSX, TypeScript, and TSX files. It identifies selected structural patterns such as dynamic evaluation, dynamic HTML assignment, and request-derived SQL string construction. Parsing builds a syntax tree only and does not execute source code. Parse failures and node limits become bounded warnings. These findings are heuristic indicators, not proof of exploitability.
+
+
+The Windows CI artifact also contains `SHA256SUMS.txt`. On PowerShell, verify an EXE with `Get-FileHash .\\Midad-Cyber-Setup-<version>-x64.exe -Algorithm SHA256` and compare the `Hash` value with the matching line in the checksum file. A matching hash verifies file integrity against that manifest; it does not authenticate the publisher because these development artifacts are unsigned.
