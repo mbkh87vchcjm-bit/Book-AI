@@ -148,3 +148,26 @@ test('requirements development filenames and unknown lockfile scopes are preserv
   ].join('\n'));
   assert.equal(cargoLock.packages[0].relationship, 'locked-unknown-scope');
 });
+
+
+test('Maven scopes and Composer lock sections preserve runtime classification evidence', () => {
+  const pom = Inventory.parseManifest('pom.xml', [
+    '<project><dependencies>',
+    '<dependency><groupId>org.example</groupId><artifactId>runtime-lib</artifactId><version>1.2.3</version></dependency>',
+    '<dependency><groupId>org.example</groupId><artifactId>test-lib</artifactId><version>2.0.0</version><scope>test</scope></dependency>',
+    '<dependency><groupId>org.example</groupId><artifactId>provided-lib</artifactId><version>3.0.0</version><scope>provided</scope></dependency>',
+    '<dependency><groupId>org.example</groupId><artifactId>optional-lib</artifactId><version>4.0.0</version><optional>true</optional></dependency>',
+    '</dependencies></project>'
+  ].join('\n'));
+  assert.ok(pom.packages.some((pkg) => pkg.name.endsWith(':runtime-lib') && pkg.relationship === 'direct-runtime'));
+  assert.ok(pom.packages.some((pkg) => pkg.name.endsWith(':test-lib') && pkg.relationship === 'development-or-test'));
+  assert.ok(pom.packages.some((pkg) => pkg.name.endsWith(':provided-lib') && pkg.relationship === 'development-or-test'));
+  assert.ok(pom.packages.some((pkg) => pkg.name.endsWith(':optional-lib') && pkg.relationship === 'direct-optional'));
+
+  const composer = Inventory.parseManifest('composer.lock', JSON.stringify({
+    packages: [{name: 'vendor/runtime', version: '1.0.0'}],
+    'packages-dev': [{name: 'vendor/test', version: '2.0.0'}]
+  }));
+  assert.ok(composer.packages.some((pkg) => pkg.name === 'vendor/runtime' && pkg.relationship === 'locked-runtime'));
+  assert.ok(composer.packages.some((pkg) => pkg.name === 'vendor/test' && pkg.relationship === 'locked-development'));
+});
