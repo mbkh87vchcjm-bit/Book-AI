@@ -66,3 +66,18 @@ test('scanner respects the selected AST analyzer and path scope', async (t) => {
   assert.equal(report.execution.projectCodeExecuted, false);
   assert.equal(report.execution.networkAccessUsed, false);
 });
+
+test('AST findings replace overlapping text heuristics when both analyzers are enabled', async (t) => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'midad-ast-dedupe-test-'));
+  t.after(() => fs.rm(root, {recursive: true, force: true}));
+  await fs.writeFile(path.join(root, 'app.js'), 'eval(userInput);\\n', 'utf8');
+  const report = await Scanner.scanProject({
+    root,
+    policy: Policy.createPolicy({analyzers: ['builtin', 'ast']})
+  });
+  assert.equal(report.ok, true);
+  const evalResults = report.findings.filter((item) =>
+    ['AST-EVAL-001', 'CYB-CODE-001'].includes(item.id));
+  assert.equal(evalResults.length, 1);
+  assert.equal(evalResults[0].id, 'AST-EVAL-001');
+});
