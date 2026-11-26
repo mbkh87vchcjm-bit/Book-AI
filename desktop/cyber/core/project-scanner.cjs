@@ -75,6 +75,32 @@ function isTextBuffer(buffer) {
   return !sample.includes('\uFFFD');
 }
 
+
+async function readBufferBounded(filePath, maxBytes, deadline) {
+  const handle = await fs.open(filePath, 'r');
+  try {
+    const current = await handle.stat();
+    if (!current.isFile()) return {ok: false, reason: 'not-a-regular-file'};
+    if (current.size > maxBytes) return {ok: false, reason: 'max-file-bytes-exceeded'};
+    const chunks = [];
+    const block = Buffer.alloc(64 * 1024);
+    let offset = 0;
+    while (offset <= maxBytes) {
+      if (Date.now() > deadline) return {ok: false, reason: 'timeout'};
+      const requestBytes = Math.min(block.length, maxBytes + 1 - offset);
+      if (requestBytes <= 0) break;
+      const result = await handle.read(block, 0, requestBytes, offset);
+      if (result.bytesRead === 0) break;
+      offset += result.bytesRead;
+      if (offset > maxBytes) return {ok: false, reason: 'max-file-bytes-exceeded'};
+      chunks.push(Buffer.from(block.subarray(0, result.bytesRead)));
+    }
+    return {ok: true, buffer: Buffer.concat(chunks, offset)};
+  } finally {
+    await handle.close();
+  }
+}
+
 function summarize(findings) {
   const result = {critical: 0, high: 0, medium: 0, low: 0, info: 0};
   findings.forEach((finding) => {
@@ -150,18 +176,32 @@ async function scanProject(options) {
       {sizeBytes: stat.size}, policy, {fileCount: scannedFiles, totalBytes: totalBytes}
     );
     if (!limit.allowed) {
-      stoppedReason = limit.reason;
+      if (limit.reason === 'max-file-bytes-exceeded') {
+        skippedFiles += 1;
+        warnings.push({code: limit.reason, path: relativePath});
+      } else {
+        stoppedReason = limit.reason;
+      }
       return;
     }
 
-    let buffer;
+    let readResult;
     try {
-      buffer = await fs.readFile(canonical);
+      readResult = await readBufferBounded(canonical, policy.limits.maxFileBytes, startedAt + policy.limits.timeoutMs);
     } catch (_) {
       skippedFiles += 1;
       warnings.push({code: 'file-read-failed', path: relativePath});
       return;
     }
+    if (!readResult.ok) {
+      if (readResult.reason === 'timeout') stoppedReason = 'timeout';
+      else {
+        skippedFiles += 1;
+        warnings.push({code: readResult.reason, path: relativePath});
+      }
+      return;
+    }
+    const buffer = readResult.buffer;
     if (!isTextBuffer(buffer)) {
       skippedFiles += 1;
       return;
@@ -187,6 +227,7 @@ async function scanProject(options) {
           path: relativePath, analyzer: rule.analyzer
         });
         if (!authorized.allowed) continue;
+        if (!Policy.shouldReportSeverity(rule.severity, policy)) continue;
 
         const match = line.match(rule.pattern);
         if (!match) continue;
