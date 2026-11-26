@@ -37,7 +37,7 @@ test('local assistant and tool catalogue are wired only through trusted local IP
   assert.ok(assistantContext.includes('resolveConcepts'));
   assert.ok(registry.includes('const INTENTS = Object.freeze'));
   assert.ok(registry.includes('TOKEN_SYNONYMS'));
-  assert.ok(main.includes('AssistantContext.buildAssistantContext(question)'));
+  assert.ok(main.includes('AssistantContext.buildAssistantContext(question, {toolLimit: 5, conceptLimit: 6}'));
   assert.ok(!renderer.includes('fetch('));
   assert.ok(!renderer.includes('child_process'));
 });

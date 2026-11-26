@@ -36,7 +36,7 @@ test('local question is sent without tool execution or cloud fallback',async()=>
   assert.equal(Object.hasOwn(body,'tools'),false);
   assert.match(body.messages[0].content,/لا تتصل بعناوين أو خدمات خارجية/);
   assert.match(body.messages[0].content,/لا تخترع روابط أو مراجع/);
-  assert.equal(body.options.num_predict,700);
+  assert.equal(body.options.num_predict,800);
 });
 
 test('unknown models and oversized questions are rejected before chat',async()=>{
