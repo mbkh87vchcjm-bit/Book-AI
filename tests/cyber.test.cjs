@@ -1,0 +1,171 @@
+'use strict';
+const test = require('node:test');
+const assert = require('node:assert/strict');
+const Policy = require('../app/src/main/assets/web/cyber-policy.js');
+const Knowledge = require('../app/src/main/assets/web/cyber-knowledge.js');
+
+test('default cyber policy is local, read-only, and safe by default', () => {
+  const policy = Policy.createPolicy();
+  assert.equal(policy.enabled, true);
+  assert.equal(policy.mode, 'read-only');
+  assert.deepEqual(policy.analyzers, ['builtin']);
+  assert.equal(policy.capabilities.staticAnalysis, true);
+  assert.equal(policy.capabilities.applyRemediations, false);
+  assert.equal(policy.capabilities.networkAccess, false);
+  assert.equal(policy.capabilities.executeProjectCode, false);
+  assert.equal(policy.privacy.localOnly, true);
+  assert.equal(policy.privacy.redactSecretValues, true);
+  assert.equal(Policy.validatePolicy(policy).valid, true);
+});
+
+test('user can configure defensive analysis scope, analyzers, limits, and severity', () => {
+  const policy = Policy.createPolicy({
+    mode: 'review', scope: {allowedPaths: ['src', 'tests'], excludedPaths: ['src/generated']},
+    analyzers: ['builtin', 'semgrep', 'dependency-audit'], severityThreshold: 'high',
+    limits: {maxFiles: 100, maxFileBytes: 500000, maxTotalBytes: 5000000, maxFindings: 50, timeoutMs: 30000},
+    capabilities: {remediationSuggestions: true, applyRemediations: true}
+  });
+  assert.equal(Policy.validatePolicy(policy).valid, true);
+  assert.equal(policy.mode, 'review');
+  assert.deepEqual(policy.scope.allowedPaths, ['src', 'tests']);
+  assert.equal(policy.limits.maxFiles, 100);
+  assert.equal(policy.severityThreshold, 'high');
+  assert.deepEqual(policy.analyzers, ['builtin', 'semgrep', 'dependency-audit']);
+});
+
+test('platform guardrails cannot be enabled through user preferences', () => {
+  const policy = Policy.createPolicy({
+    capabilities: {networkAccess: true, executeProjectCode: true},
+    privacy: {localOnly: false, redactSecretValues: false}
+  });
+  assert.equal(policy.capabilities.networkAccess, false);
+  assert.equal(policy.capabilities.executeProjectCode, false);
+  assert.equal(policy.privacy.localOnly, true);
+  assert.equal(policy.privacy.redactSecretValues, true);
+});
+
+test('tampered policy with network or execution enabled is rejected', () => {
+  const policy = Policy.createPolicy();
+  policy.capabilities.networkAccess = true;
+  assert.equal(Policy.validatePolicy(policy).valid, false);
+  assert.ok(Policy.validatePolicy(policy).errors.includes('network-access-locked'));
+});
+
+test('relative paths are normalized and traversal or absolute paths are rejected', () => {
+  assert.equal(Policy.normalizeRelativePath('src\\controllers\\User.php'), 'src/controllers/User.php');
+  assert.equal(Policy.normalizeRelativePath('../outside.php'), null);
+  assert.equal(Policy.normalizeRelativePath('src/../../secret.txt'), null);
+  assert.equal(Policy.normalizeRelativePath('C:\\Users\\me\\file.php'), null);
+  assert.equal(Policy.normalizeRelativePath('\\\\server\\share\\file.php'), null);
+  assert.equal(Policy.normalizeRelativePath('/etc/passwd'), null);
+});
+
+test('path scope allowlist and exclusions are enforced', () => {
+  const policy = Policy.createPolicy({scope: {allowedPaths: ['src'], excludedPaths: ['src/generated', 'src/vendor']}});
+  assert.equal(Policy.pathDecision('src/app.php', policy).allowed, true);
+  assert.equal(Policy.pathDecision('src/generated/build.php', policy).reason, 'path-excluded');
+  assert.equal(Policy.pathDecision('docs/readme.md', policy).reason, 'outside-scope');
+});
+
+test('file resource limits prevent oversized or excessive scans', () => {
+  const policy = Policy.createPolicy({limits: {maxFiles: 2, maxFileBytes: 100, maxTotalBytes: 150, maxFindings: 5, timeoutMs: 1000}});
+  assert.equal(Policy.fileLimitDecision({sizeBytes: 50}, policy, {fileCount: 1, totalBytes: 50}).allowed, true);
+  assert.equal(Policy.fileLimitDecision({sizeBytes: 101}, policy, {}).reason, 'max-file-bytes-exceeded');
+  assert.equal(Policy.fileLimitDecision({sizeBytes: 50}, policy, {fileCount: 2}).reason, 'max-files-exceeded');
+  assert.equal(Policy.fileLimitDecision({sizeBytes: 60}, policy, {totalBytes: 100}).reason, 'max-total-bytes-exceeded');
+});
+
+test('local static analysis is authorized only inside selected scope', () => {
+  const policy = Policy.createPolicy({scope: {allowedPaths: ['src']}});
+  assert.equal(Policy.authorizeAction('static-analysis', policy, {path: 'src/app.php', analyzer: 'builtin'}).allowed, true);
+  assert.equal(Policy.authorizeAction('static-analysis', policy, {path: 'docs/app.php'}).reason, 'outside-scope');
+  assert.equal(Policy.authorizeAction('static-analysis', policy, {path: 'src/app.php', analyzer: 'semgrep'}).reason, 'analyzer-not-enabled');
+});
+
+test('education mode only authorizes learning and concept explanations', () => {
+  const policy = Policy.createPolicy({mode: 'education'});
+  assert.equal(Policy.authorizeAction('explain-concept', policy).allowed, true);
+  assert.equal(Policy.authorizeAction('compare-concepts', policy).allowed, true);
+  assert.equal(Policy.authorizeAction('static-analysis', policy).reason, 'education-mode-only');
+});
+
+test('fix suggestions require review mode; applying a fix requires explicit approval', () => {
+  const readOnly = Policy.createPolicy({mode: 'read-only'});
+  assert.equal(Policy.authorizeAction('suggest-fix', readOnly, {path: 'src/a.php'}).reason, 'review-mode-required');
+  const review = Policy.createPolicy({mode: 'review', capabilities: {remediationSuggestions: true, applyRemediations: true}});
+  assert.equal(Policy.authorizeAction('suggest-fix', review, {path: 'src/a.php'}).allowed, true);
+  assert.equal(Policy.authorizeAction('apply-fix', review, {path: 'src/a.php'}).reason, 'explicit-user-approval-required');
+  assert.equal(Policy.authorizeAction('apply-fix', review, {
+    path: 'src/a.php', userApproved: true, changeSummary: 'Use a parameterized query'
+  }).allowed, true);
+});
+
+test('dangerous or out-of-scope active actions remain blocked', () => {
+  const policy = Policy.createPolicy({mode: 'review', capabilities: {applyRemediations: true}});
+  for (const action of Policy.FIXED_DENIALS) {
+    assert.equal(Policy.authorizeAction(action, policy, {userApproved: true}).allowed, false, action);
+    assert.equal(Policy.authorizeAction(action, policy).reason, 'blocked-by-platform-safety-policy');
+  }
+});
+
+test('disabled module denies all operations', () => {
+  const policy = Policy.createPolicy({enabled: false});
+  assert.equal(Policy.authorizeAction('explain-concept', policy).reason, 'cyber-module-disabled');
+  assert.equal(Policy.authorizeAction('static-analysis', policy).reason, 'cyber-module-disabled');
+});
+
+test('severity threshold is configurable', () => {
+  const policy = Policy.createPolicy({severityThreshold: 'high'});
+  assert.equal(Policy.shouldReportSeverity('medium', policy), false);
+  assert.equal(Policy.shouldReportSeverity('high', policy), true);
+  assert.equal(Policy.shouldReportSeverity('critical', policy), true);
+});
+
+test('sensitive values are redacted before display or export', () => {
+  assert.equal(Policy.redactSecret(''), '');
+  assert.equal(Policy.redactSecret('abc'), '[REDACTED]');
+  assert.match(Policy.redactSecret('ghp_abcdefghijklmnopqrstuvwxyz'), /^ghp.*REDACTED/);
+});
+
+test('concept engine distinguishes authentication and authorization', () => {
+  const authn = Knowledge.resolveTerm('Authentication');
+  const authz = Knowledge.resolveTerm('Authorization');
+  assert.equal(authn.status, 'resolved');
+  assert.equal(authz.status, 'resolved');
+  assert.notEqual(authn.concept.id, authz.concept.id);
+  assert.equal(Knowledge.compareTerms('Authentication', 'Authorization').relation, 'explicit-contrast');
+});
+
+test('concept engine distinguishes hashing, encryption, and encoding', () => {
+  const comparison = Knowledge.compareTerms('Hashing', 'Encryption');
+  assert.equal(comparison.status, 'compared');
+  assert.equal(comparison.relation, 'explicit-contrast');
+  assert.match(comparison.first.distinction, /أحادية الاتجاه/);
+  assert.match(Knowledge.resolveTerm('Encoding').concept.distinction, /ليس تشفيراً/);
+});
+
+test('ambiguous token term asks for context instead of guessing', () => {
+  const noContext = Knowledge.resolveTerm('token');
+  assert.equal(noContext.status, 'ambiguous');
+  assert.equal(noContext.matches.length, 3);
+  const api = Knowledge.resolveTerm('token', 'API authentication and access control');
+  assert.equal(api.status, 'resolved');
+  assert.equal(api.concept.id, 'SEC-API-TOKEN-001');
+  const llm = Knowledge.resolveTerm('token', 'LLM language model context window');
+  assert.equal(llm.status, 'resolved');
+  assert.equal(llm.concept.id, 'AI-TOKEN-001');
+  const compiler = Knowledge.resolveTerm('token', 'compiler lexer parser');
+  assert.equal(compiler.status, 'resolved');
+  assert.equal(compiler.concept.id, 'COMP-TOKEN-001');
+});
+
+test('Arabic aliases resolve to the same canonical security concept', () => {
+  const result = Knowledge.resolveTerm('التحقق من الهوية');
+  assert.equal(result.status, 'resolved');
+  assert.equal(result.concept.id, 'SEC-AUTHN-001');
+});
+
+test('concept list can be filtered by knowledge domain', () => {
+  assert.ok(Knowledge.listByDomain('cryptography').length >= 3);
+  assert.ok(Knowledge.listByDomain('secure-development').length >= 2);
+});
