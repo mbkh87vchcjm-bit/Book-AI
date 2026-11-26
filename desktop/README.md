@@ -74,3 +74,27 @@ This is not a complete build SBOM or Software Composition Analysis result. It do
 
 
 Scan lifecycle protection: changing the project or saving policy settings invalidates old reports. If an in-flight scan finishes after the project, policy, or scan generation changes, its result is discarded and cannot become the export source.
+
+
+## Phase 2 — Offline AI and tool intelligence
+
+- The local registry contains 209 unique tool entries across 19 categories from the research inventory.
+- 28 entries have an initial high-level knowledge summary. Other entries are marked as needing documentation review; this is not a claim that every tool has been fully studied.
+- Tool execution remains disabled for every catalogue entry. The catalogue is reference-only in this phase.
+- The local assistant uses an already-installed Ollama model through the fixed endpoint http://127.0.0.1:11434. It does not accept a configurable remote endpoint and does not fall back to cloud inference.
+- The Electron renderer denies HTTP, HTTPS, WebSocket, and secure WebSocket requests. Its Content Security Policy also denies network connections.
+- Midad does not download models, rules, tool binaries, or vulnerability databases. Prepare these separately using institution-approved media and verify provenance and hashes before import.
+- Model answers are generated locally and must be checked by a researcher. Incomplete tool records are marked as such.
+
+### Ollama local-only configuration on Windows
+
+Before the workstation is disconnected from the internet:
+1. Set the user environment variable OLLAMA_NO_CLOUD=1.
+2. Set OLLAMA_HOST=127.0.0.1:11434 so the service listens only on loopback.
+3. Quit and restart Ollama so it reads the new settings.
+4. Confirm that an already-installed local model appears in Midad's local assistant page.
+5. Use Windows Defender Firewall and institutional endpoint policy to block outbound traffic when full isolation is required.
+
+These application controls do not by themselves create a physical air gap. A genuinely isolated workstation also requires network isolation at the operating-system and network layers. Model, rule, and database updates must use a separate controlled import process.
+
+Ollama's official FAQ documents OLLAMA_NO_CLOUD=1 for disabling cloud features and states that the default server bind address is 127.0.0.1:11434.

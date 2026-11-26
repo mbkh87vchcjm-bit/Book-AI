@@ -9,7 +9,7 @@
     "start:dev": "electron . --enable-logging",
     "electron:version": "electron --version",
     "dist:win": "electron-builder --win nsis portable --x64",
-    "test:cyber": "node --test ../tests/cyber-ast.test.cjs ../tests/dependency-inventory.test.cjs ../tests/sbom-export.test.cjs"
+    "test:cyber": "node --test ../tests/cyber-ast.test.cjs ../tests/dependency-inventory.test.cjs ../tests/sbom-export.test.cjs ../tests/cyber-phase2-integration.test.cjs"
   },
   "devDependencies": {
     "electron": "45.5.0",

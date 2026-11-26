@@ -15,15 +15,23 @@
   }
 
   function showPage(page) {
-    const dashboard = page === 'dashboard';
-    const glossary = page === 'glossary';
-    $('dashboard-page').classList.toggle('hidden', !dashboard);
-    $('glossary-page').classList.toggle('hidden', !glossary);
-    $('settings-page').classList.toggle('hidden', dashboard || glossary);
-    $('nav-dashboard').classList.toggle('active', dashboard);
-    $('nav-glossary').classList.toggle('active', glossary);
-    $('nav-settings').classList.toggle('active', !dashboard && !glossary);
-    $('page-title').textContent = dashboard ? 'لوحة الفحص الأمني' : glossary ? 'قاموس المفاهيم' : 'سياسات التحكم';
+    const pages = ['dashboard', 'glossary', 'tools', 'assistant', 'settings'];
+    const titles = {
+      dashboard: 'لوحة الفحص الأمني',
+      glossary: 'قاموس المفاهيم',
+      tools: 'دليل الأدوات',
+      assistant: 'المساعد المحلي',
+      settings: 'سياسات التحكم'
+    };
+    pages.forEach((name) => {
+      const element = $(name + '-page');
+      if (element) element.classList.toggle('hidden', name !== page);
+      const nav = $('nav-' + name);
+      if (nav) nav.classList.toggle('active', name === page);
+    });
+    $('page-title').textContent = titles[page] || titles.dashboard;
+    if (page === 'tools') searchTools();
+    if (page === 'assistant') loadLocalModels();
   }
 
   function pathsFromTextarea(value) {
@@ -436,6 +444,171 @@
     container.appendChild(relation);
   }
 
+
+  let localModels = [];
+
+  function addToolText(parent, label, value) {
+    const wrapper = document.createElement('div');
+    wrapper.className = 'tool-detail';
+    const title = document.createElement('strong');
+    title.textContent = label;
+    const content = document.createElement('p');
+    content.textContent = value || 'غير متوفر في السجل الحالي.';
+    wrapper.append(title, content);
+    parent.appendChild(wrapper);
+  }
+
+  function renderToolResults(result) {
+    const container = $('tool-results');
+    container.replaceChildren();
+    $('tool-count').textContent = 'الإجمالي المطابق: ' + result.total + ' · المعروض: ' + result.results.length;
+    if (!result.results.length) {
+      const empty = document.createElement('p');
+      empty.className = 'muted';
+      empty.textContent = 'لم نعثر على أداة مطابقة. جرّب الاسم الإنجليزي أو التصنيف.';
+      container.appendChild(empty);
+      return;
+    }
+    result.results.forEach((tool) => {
+      const card = document.createElement('article');
+      card.className = 'tool-card';
+      const header = document.createElement('div');
+      header.className = 'tool-card-header';
+      const name = document.createElement('h3');
+      name.textContent = tool.name;
+      const status = document.createElement('span');
+      status.className = 'tool-status ' + (tool.knowledgeStatus === 'reviewed-summary' ? 'reviewed' : 'pending');
+      status.textContent = tool.knowledgeStatus === 'reviewed-summary' ? 'ملخص مراجع' : 'بحاجة إلى مراجعة';
+      header.append(name, status);
+      const category = document.createElement('p');
+      category.className = 'tool-category';
+      category.textContent = tool.categoryName + ' · ' + tool.categoryEnglish;
+      const summary = document.createElement('p');
+      summary.textContent = tool.summary;
+      card.append(header, category, summary);
+      if (tool.purpose) addToolText(card, 'الغرض', tool.purpose);
+      if (tool.inputs && tool.inputs.length) addToolText(card, 'المدخلات', tool.inputs.join('، '));
+      if (tool.outputs && tool.outputs.length) addToolText(card, 'المخرجات', tool.outputs.join('، '));
+      addToolText(card, 'العمل دون إنترنت', tool.offline);
+      addToolText(card, 'الاتصال الشبكي', tool.network);
+      addToolText(card, 'المخاطر والضوابط', tool.risk);
+      addToolText(card, 'الحدود', tool.limits);
+      if (tool.documentation) addToolText(card, 'مرجع التوثيق المسجل (لا يتم فتحه تلقائياً)', tool.documentation);
+      const disabled = document.createElement('p');
+      disabled.className = 'tool-execution-locked';
+      disabled.textContent = 'تنفيذ الأداة من داخل مِداد: معطّل في هذه المرحلة.';
+      card.appendChild(disabled);
+      container.appendChild(card);
+    });
+  }
+
+  async function loadToolCategories() {
+    try {
+      const result = await api.listToolCategories();
+      if (!result.ok) throw new Error('tool-catalogue-unavailable');
+      const select = $('tools-category');
+      select.replaceChildren();
+      const all = document.createElement('option');
+      all.value = 'all';
+      all.textContent = 'كل التصنيفات (' + result.totalTools + ')';
+      select.appendChild(all);
+      result.categories.forEach((category) => {
+        const option = document.createElement('option');
+        option.value = category.id;
+        option.textContent = category.name + ' (' + category.count + ')';
+        select.appendChild(option);
+      });
+      $('tool-count').textContent = result.totalTools + ' أداة مسجلة · ' + result.reviewedTools + ' ملخصاً أولياً تمت مراجعته';
+      await searchTools();
+    } catch (_) {
+      $('tool-count').textContent = 'تعذر تحميل سجل الأدوات المحلي.';
+    }
+  }
+
+  async function searchTools() {
+    try {
+      const result = await api.searchTools({
+        query: $('tools-search').value.trim(),
+        category: $('tools-category').value || 'all',
+        limit: 40
+      });
+      if (!result.ok) throw new Error('tool-search-failed');
+      renderToolResults(result);
+    } catch (_) {
+      $('tool-results').textContent = 'تعذر البحث في سجل الأدوات.';
+    }
+  }
+
+  async function loadLocalModels() {
+    const status = $('model-status');
+    const select = $('local-model');
+    try {
+      const result = await api.listLocalModels();
+      select.replaceChildren();
+      localModels = result.ok ? result.models : [];
+      if (!localModels.length) {
+        const option = document.createElement('option');
+        option.value = '';
+        option.textContent = 'لا يوجد نموذج محلي متاح';
+        select.appendChild(option);
+        status.textContent = 'خدمة Ollama غير متاحة أو لم يتم تثبيت نموذج. لا يوجد انتقال إلى السحابة.';
+        return;
+      }
+      localModels.forEach((model) => {
+        const option = document.createElement('option');
+        option.value = model.name;
+        option.textContent = model.name;
+        select.appendChild(option);
+      });
+      status.textContent = 'اتصال محلي فقط · عدد النماذج المكتشفة: ' + localModels.length;
+    } catch (_) {
+      localModels = [];
+      status.textContent = 'تعذر الوصول إلى خدمة النموذج المحلية.';
+    }
+  }
+
+  async function askLocalAssistant() {
+    const question = $('assistant-question').value.trim();
+    const model = $('local-model').value;
+    const answerBox = $('assistant-answer');
+    if (!question) {
+      toast('اكتب سؤالاً أولاً.');
+      return;
+    }
+    if (!model || !localModels.some((item) => item.name === model)) {
+      toast('ثبّت نموذجاً محلياً وتأكد من تشغيل Ollama أولاً.');
+      return;
+    }
+    $('ask-local').disabled = true;
+    answerBox.textContent = 'يتم إرسال السؤال إلى النموذج المحلي على هذا الجهاز…';
+    try {
+      const result = await api.askLocalModel({model, question});
+      answerBox.replaceChildren();
+      if (!result.ok) {
+        const error = document.createElement('p');
+        error.className = 'muted';
+        error.textContent = result.error === 'local-runtime-unavailable'
+          ? 'خدمة النموذج المحلي غير متاحة. لم تتم محاولة الاتصال بخدمة خارجية.'
+          : 'تعذر الحصول على إجابة محلية: ' + result.error;
+        answerBox.appendChild(error);
+        return;
+      }
+      const heading = document.createElement('strong');
+      heading.textContent = 'إجابة النموذج المحلي · ' + result.model;
+      const content = document.createElement('p');
+      content.className = 'assistant-response-text';
+      content.textContent = result.answer;
+      const notice = document.createElement('p');
+      notice.className = 'muted';
+      notice.textContent = 'الإجابة مولدة محلياً وتحتاج إلى مراجعة الباحث والتحقق من المراجع. مِداد لم ينفذ أدوات أو أوامر.';
+      answerBox.append(heading, content, notice);
+    } catch (_) {
+      answerBox.textContent = 'حدث خطأ أثناء الاتصال بخدمة النموذج المحلية.';
+    } finally {
+      $('ask-local').disabled = false;
+    }
+  }
+
   async function initialize() {
     await loadPolicy();
     $('choose-project').addEventListener('click', chooseProject);
@@ -446,11 +619,20 @@
     $('nav-dashboard').addEventListener('click', () => showPage('dashboard'));
     $('nav-glossary').addEventListener('click', () => showPage('glossary'));
     $('resolve-concept').addEventListener('click', resolveConcept);
+    $('nav-tools').addEventListener('click', () => showPage('tools'));
+    $('nav-assistant').addEventListener('click', () => showPage('assistant'));
+    $('search-tools').addEventListener('click', searchTools);
+    $('tools-search').addEventListener('keydown', (event) => { if (event.key === 'Enter') searchTools(); });
+    $('tools-category').addEventListener('change', searchTools);
+    $('refresh-models').addEventListener('click', loadLocalModels);
+    $('ask-local').addEventListener('click', askLocalAssistant);
     $('compare-concepts').addEventListener('click', compareConcepts);
     $('nav-settings').addEventListener('click', () => showPage('settings'));
     $('open-settings').addEventListener('click', () => showPage('settings'));
     $('cancel-settings').addEventListener('click', () => showPage('dashboard'));
     updateScanButton();
+    await loadToolCategories();
+    await loadLocalModels();
   }
 
   initialize().catch(() => toast('تعذر تهيئة Midad Cyber.'));

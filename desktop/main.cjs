@@ -6,11 +6,45 @@ const path = require('node:path');
 const Policy = require('./cyber/core/cyber-policy.js');
 const Scanner = require('./cyber/core/project-scanner.cjs');
 const Sbom = require('./cyber/core/sbom-export.cjs');
+const ToolRegistry = require('./cyber/core/tool-registry.cjs');
+const CyberKnowledge = require('./cyber/core/cyber-knowledge.js');
+const LocalAI = require('./cyber/core/local-ai.cjs');
+const localAiClient = LocalAI.createLocalAiClient();
 
 let mainWindow = null;
 let selectedProjectRoot = null;
 let lastScanReport = null;
 let scanRevision = 0;
+let lastAssistantRequestAt = 0;
+
+function isTrustedRenderer(event) {
+  return Boolean(mainWindow && event && event.sender === mainWindow.webContents &&
+    event.senderFrame === mainWindow.webContents.mainFrame &&
+    typeof event.senderFrame.url === 'string' && event.senderFrame.url.startsWith('file://'));
+}
+
+function buildAssistantContext(question) {
+  const toolContext = ToolRegistry.buildKnowledgeContext(question, 8);
+  const normalized = CyberKnowledge.normalize(question);
+  const concepts = CyberKnowledge.concepts.filter((concept) => {
+    const names = [concept.term, concept.ar].concat(concept.aliases || []);
+    return names.some((name) => {
+      const candidate = CyberKnowledge.normalize(name);
+      return candidate.length >= 3 && normalized.includes(candidate);
+    });
+  }).slice(0, 6).map((concept) => ({
+    id: concept.id, term: concept.term, arabic: concept.ar, domain: concept.domain,
+    definition: concept.definition, distinction: concept.distinction,
+    references: CyberKnowledge.getReferences(concept)
+  }));
+  return JSON.stringify({
+    toolCatalogue: toolContext,
+    securityConcepts: concepts,
+    platformRules: {offlineRuntimeOnly: true, toolExecutionEnabled: false,
+      networkScanningEnabled: false, projectCodeExecutionEnabled: false,
+      note: 'الكتالوج مرجع معرفي؛ مِداد لا يشغّل الأدوات ولا يختبر أهدافاً.'}
+  });
+}
 
 function policyFilePath() {
   return path.join(app.getPath('userData'), 'cyber-policy.json');
@@ -66,6 +100,43 @@ function createWindow() {
   mainWindow.loadFile(path.join(__dirname, 'cyber', 'renderer', 'index.html'));
   mainWindow.on('closed', () => { mainWindow = null; });
 }
+
+
+ipcMain.handle('cyber:list-tool-categories', async (event) => {
+  if (!isTrustedRenderer(event)) return {ok: false, error: 'untrusted-renderer'};
+  return {
+    ok: true,
+    totalTools: ToolRegistry.TOOLS.length,
+    reviewedTools: ToolRegistry.TOOLS.filter((item) => item.knowledgeStatus === 'reviewed-summary').length,
+    categories: ToolRegistry.listCategories()
+  };
+});
+
+ipcMain.handle('cyber:search-tools', async (event, input) => {
+  if (!isTrustedRenderer(event)) return {ok: false, error: 'untrusted-renderer'};
+  const query = String(input && input.query || '').trim().slice(0, 200);
+  const category = String(input && input.category || 'all');
+  const validCategory = category === 'all' || ToolRegistry.CATEGORIES.some((item) => item.id === category);
+  if (!validCategory) return {ok: false, error: 'invalid-category'};
+  const limit = Number.isSafeInteger(input && input.limit) ? Math.max(1, Math.min(input.limit, 40)) : 40;
+  return {ok: true, ...ToolRegistry.searchTools(query, category, limit)};
+});
+
+ipcMain.handle('cyber:list-local-models', async (event) => {
+  if (!isTrustedRenderer(event)) return {ok: false, connected: false, models: [], error: 'untrusted-renderer'};
+  return localAiClient.listModels();
+});
+
+ipcMain.handle('cyber:ask-local-model', async (event, input) => {
+  if (!isTrustedRenderer(event)) return {ok: false, error: 'untrusted-renderer'};
+  const now = Date.now();
+  if (now - lastAssistantRequestAt < 1200) return {ok: false, error: 'request-rate-limited'};
+  lastAssistantRequestAt = now;
+  const question = String(input && input.question || '').trim();
+  const model = String(input && input.model || '').trim();
+  if (!question || question.length > 4000) return {ok: false, error: 'question-invalid'};
+  return localAiClient.ask({model, question, context: buildAssistantContext(question)});
+});
 
 ipcMain.handle('cyber:choose-project', async () => {
   const result = await dialog.showOpenDialog(mainWindow, {
@@ -206,6 +277,11 @@ ipcMain.handle('cyber:export-sbom', async () => {
 
 app.whenReady().then(() => {
   session.defaultSession.setPermissionRequestHandler((_webContents, _permission, callback) => callback(false));
+  // Deny Chromium network requests. Main-process model access is fixed to local loopback only.
+  session.defaultSession.webRequest.onBeforeRequest(
+    {urls: ['http://*/*', 'https://*/*', 'ws://*/*', 'wss://*/*']},
+    (_details, callback) => callback({cancel: true})
+  );
   createWindow();
   app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) createWindow(); });
 });

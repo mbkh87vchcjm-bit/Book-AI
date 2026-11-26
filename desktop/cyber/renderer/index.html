@@ -17,6 +17,8 @@
       <div class="sidebar-label">مساحة العمل</div>
       <button class="nav-button active" id="nav-dashboard"><span>◈</span> لوحة الفحص</button>
       <button class="nav-button" id="nav-glossary"><span>⌘</span> قاموس المفاهيم</button>
+      <button class="nav-button" id="nav-tools"><span>▦</span> دليل الأدوات</button>
+      <button class="nav-button" id="nav-assistant"><span>✧</span> المساعد المحلي</button>
       <button class="nav-button" id="nav-settings"><span>⚙</span> سياسات التحكم</button>
       <div class="sidebar-note">
         <span class="status-dot"></span>
@@ -76,6 +78,43 @@
           </div>
           <div class="form-actions"><button class="button primary" type="button" id="compare-concepts">قارن بين المفهومين</button></div>
           <div id="comparison-result" class="concept-result" aria-live="polite"><span class="muted">ستظهر المقارنة هنا.</span></div>
+        </section>
+      </section>
+
+
+      <section class="page hidden" id="tools-page">
+        <div class="settings-intro">
+          <div class="eyebrow">OFFLINE TOOL INTELLIGENCE</div>
+          <h2>دليل أدوات البحث الأمني</h2>
+          <p>سجل محلي منقح للأدوات التي زودتني بها. يعرض الوظائف الموثقة فقط، ويشير بوضوح إلى المعلومات التي ما زالت بحاجة إلى مراجعة.</p>
+        </div>
+        <section class="settings-card">
+          <div class="settings-title"><div><h3>البحث في سجل الأدوات</h3><p id="tool-count">جارٍ تحميل السجل المحلي…</p></div></div>
+          <div class="tool-search-grid">
+            <label class="field">اسم الأداة أو وظيفتها<input id="tools-search" type="search" placeholder="مثال: Semgrep أو تحليل ساكن"></label>
+            <label class="field">التصنيف<select id="tools-category"><option value="all">كل التصنيفات</option></select></label>
+          </div>
+          <div class="form-actions"><button class="button primary" type="button" id="search-tools">ابحث في الأدوات</button></div>
+          <div id="tool-results" class="tool-results" aria-live="polite"><p class="muted">سيظهر سجل الأدوات هنا.</p></div>
+        </section>
+      </section>
+
+      <section class="page hidden" id="assistant-page">
+        <div class="settings-intro">
+          <div class="eyebrow">LOCAL RESEARCH ASSISTANT</div>
+          <h2>مساعد مِداد المحلي</h2>
+          <p>الإجابة تتم عبر نموذج مثبت على جهازك. لا يوجد انتقال إلى نموذج سحابي أو تنفيذ تلقائي للأدوات أو الأوامر.</p>
+        </div>
+        <section class="settings-card">
+          <div class="settings-title"><div><h3>حالة محرك النموذج المحلي</h3><p id="model-status">يتم التحقق من خدمة Ollama المحلية…</p></div></div>
+          <div class="assistant-model-row">
+            <label class="field">النموذج المثبت محلياً<select id="local-model"><option value="">لم يتم اكتشاف نموذج بعد</option></select></label>
+            <button class="button ghost" type="button" id="refresh-models">تحديث قائمة النماذج</button>
+          </div>
+          <div class="notice">يجب تثبيت Ollama والنموذج مسبقاً. يتصل مِداد حصراً بـ 127.0.0.1:11434، ولا يقوم بتنزيل النماذج أو الاتصال بخدمات سحابية.</div>
+          <label class="field">سؤال البحث<textarea id="assistant-question" rows="4" maxlength="4000" placeholder="اسأل عن وظيفة أداة، الفروق بين الأدوات، حدودها، متطلبات تشغيلها محلياً، أو تفسير نتيجة دفاعية محفوظة."></textarea></label>
+          <div class="form-actions"><button class="button primary" type="button" id="ask-local">إرسال إلى النموذج المحلي</button></div>
+          <div id="assistant-answer" class="assistant-answer" aria-live="polite"><p class="muted">لم يتم إرسال سؤال بعد. لا تحفظ هذه الصفحة سجل المحادثة.</p></div>
         </section>
       </section>
 
