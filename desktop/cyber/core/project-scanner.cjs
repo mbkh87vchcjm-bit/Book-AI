@@ -4,6 +4,7 @@ const fs = require('node:fs/promises');
 const path = require('node:path');
 const Policy = require('./cyber-policy.js');
 const DependencyInventory = require('./dependency-inventory.cjs');
+const AstAnalyzer = require('./ast-static-analysis.cjs');
 
 const SOURCE_EXTENSIONS = new Set([
   '.c', '.cc', '.cpp', '.cxx', '.h', '.hpp', '.cs', '.java',
@@ -137,6 +138,7 @@ async function scanProject(options) {
   let totalBytes = 0;
   let stoppedReason = null;
   const rules = makeRules();
+  const astSummary = {available: AstAnalyzer.available, scannedFiles: 0, parseFailures: 0};
   const dependencyInventory = {
     enabled: policy.analyzers.includes('dependency-audit'),
     manifestsScanned: 0,
@@ -240,6 +242,40 @@ async function scanProject(options) {
     scannedFiles += 1;
     totalBytes += buffer.length;
 
+    if (AstAnalyzer.supportsFile(relativePath) && policy.analyzers.includes('ast')) {
+      const authorized = Policy.authorizeAction('static-analysis', policy, {
+        path: relativePath, analyzer: 'ast'
+      });
+      if (authorized.allowed) {
+        if (!AstAnalyzer.available) {
+          if (!warnings.some((item) => item.code === 'ast-parser-unavailable')) {
+            warnings.push({code: 'ast-parser-unavailable'});
+          }
+        } else {
+          const astResult = AstAnalyzer.analyze(text, relativePath);
+          if (!astResult.ok) {
+            astSummary.parseFailures += 1;
+            warnings.push({code: astResult.code || 'ast-analysis-failed', path: relativePath});
+          } else {
+            astSummary.scannedFiles += 1;
+            for (const finding of astResult.findings) {
+              if (findings.length >= policy.limits.maxFindings) {
+                stoppedReason = 'max-findings-exceeded';
+                return;
+              }
+              if (!Policy.shouldReportSeverity(finding.severity, policy)) continue;
+              findings.push({
+                ...finding, analyzer: 'ast', file: relativePath,
+                evidence: null, evidenceHidden: true,
+                reference: 'Babel parser structural analysis'
+              });
+            }
+            if (astResult.truncated) warnings.push({code: 'ast-node-limit-exceeded', path: relativePath});
+          }
+        }
+      }
+    }
+
     for (let index = 0; index < lines.length; index += 1) {
       if (Date.now() - startedAt > policy.limits.timeoutMs) {
         stoppedReason = 'timeout';
@@ -336,6 +372,7 @@ async function scanProject(options) {
     totalBytes,
     stoppedReason,
     severitySummary: summarize(filtered),
+    astAnalysis: astSummary,
     dependencyInventory: {
       enabled: dependencyInventory.enabled,
       manifestsScanned: dependencyInventory.manifestsScanned,
