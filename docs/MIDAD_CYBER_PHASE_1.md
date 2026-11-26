@@ -64,3 +64,5 @@ Official references:
 - OWASP ASVS 5.0.0: https://asvs.owasp.org/
 - OWASP SQL Injection Prevention: https://cheatsheetseries.owasp.org/cheatsheets/SQL_Injection_Prevention_Cheat_Sheet.html
 - OWASP Cross Site Scripting Prevention: https://cheatsheetseries.owasp.org/cheatsheets/Cross_Site_Scripting_Prevention_Cheat_Sheet.html
+
+The glossary also includes XSS, CSRF, IDOR/BOLA, SSRF, session management, MFA, RBAC, input validation, CVE/CWE/CVSS, SBOM, and SCA distinctions. Automated tests ensure that each declared source identifier resolves to a versioned source record.
