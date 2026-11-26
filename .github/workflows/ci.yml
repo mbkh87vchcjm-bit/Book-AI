@@ -80,6 +80,10 @@ jobs:
         working-directory: desktop
         run: npm run electron:version
 
+      - name: Run desktop cyber parser and inventory tests
+        working-directory: desktop
+        run: npm run test:cyber
+
       - name: Build Windows x64 installer and portable app
         working-directory: desktop
         run: npm run dist:win
