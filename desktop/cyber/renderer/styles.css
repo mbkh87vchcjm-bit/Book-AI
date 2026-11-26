@@ -88,3 +88,20 @@ textarea { resize:vertical; direction:ltr; text-align:left; line-height:1.7; }
 .hidden { display:none !important; }
 @media(max-width:960px) { .app{grid-template-columns:190px 1fr} .main{padding:22px 20px} .metrics{grid-template-columns:repeat(2,1fr)} .settings-grid{grid-template-columns:repeat(2,1fr)} }
 @media(max-width:680px) { .app{display:block} .sidebar{display:none} .main{padding:18px 13px} .intro-card{padding:19px} .shield-art{display:none} .topbar{align-items:flex-start} .metrics{grid-template-columns:repeat(2,1fr)} .settings-grid{grid-template-columns:1fr} .section-heading{align-items:flex-start; flex-direction:column} }
+
+
+.concept-result { margin-top:16px; padding:15px; border:1px solid #344a62; border-radius:10px; background:#111d2a; min-height:70px; }
+.concept-result h3 { color:#e7f0fa; margin:0 0 12px; }
+.concept-field { padding:10px 0; border-top:1px solid #293a4d; }
+.concept-field strong { display:block; font-size:12px; color:#9fc8f0; margin-bottom:5px; }
+.concept-field p { color:#d3dfeb; }
+.concept-option { padding:12px 0; border-top:1px solid #293a4d; }
+.concept-option strong { display:block; font-size:13px; }
+.concept-option span { display:block; font-size:10px; color:#83afd9; direction:ltr; text-align:right; margin:5px 0; }
+.concept-option p { color:#c5d2df; }
+.comparison-grid { display:grid; grid-template-columns:120px 1fr 1fr; gap:0; border:1px solid #30445b; border-radius:9px; overflow:hidden; margin:12px 0; }
+.comparison-grid > * { padding:11px; border-bottom:1px solid #30445b; border-left:1px solid #30445b; }
+.comparison-grid > :nth-last-child(-n+3) { border-bottom:0; }
+.comparison-label { color:#9fc8f0; font-size:11px; background:#1b2b3d; }
+.comparison-grid p { color:#d3dfeb; }
+@media(max-width:720px) { .comparison-grid { grid-template-columns:1fr; } .comparison-grid > * { border-left:0; } }
