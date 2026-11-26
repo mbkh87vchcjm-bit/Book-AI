@@ -206,7 +206,12 @@
 
     const resultList = $('results');
     resultList.replaceChildren();
-    $('result-caption').textContent = 'فُحص ' + report.scannedFiles + ' ملفاً؛ تم تجاوز أو استثناء ' + report.skippedFiles + ' ملفاً.';
+    const astInfo = report.astAnalysis;
+    const astCaption = astInfo && astInfo.available
+      ? ' · AST: ' + astInfo.scannedFiles.toLocaleString('ar') + ' ملف، ' + astInfo.parseFailures.toLocaleString('ar') + ' تعذر تحليله'
+      : ' · التحليل البنيوي غير متاح في هذه البيئة';
+    $('result-caption').textContent = 'فُحص ' + report.scannedFiles.toLocaleString('ar') +
+      ' ملفاً؛ تم تجاوز أو استثناء ' + report.skippedFiles.toLocaleString('ar') + ' ملفاً.' + astCaption;
     if (!report.findings.length) {
       const empty = document.createElement('div');
       empty.className = 'results-empty';
