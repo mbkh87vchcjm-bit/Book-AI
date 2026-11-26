@@ -110,3 +110,38 @@ test('scanner refuses educational mode and invalid root', async () => {
     root: path.join(os.tmpdir(), 'missing-midad-project'), policy: normal
   })).error, 'project-root-unavailable');
 });
+
+test('scanner skips files above the per-file byte cap and continues within the cap', async (t) => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'midad-cyber-size-test-'));
+  t.after(() => fs.rm(root, {recursive: true, force: true}));
+  await fs.writeFile(path.join(root, 'small.js'), 'eval(input);\n', 'utf8');
+  await fs.writeFile(path.join(root, 'large.js'), 'x'.repeat(256), 'utf8');
+  const policy = Policy.createPolicy({
+    analyzers: ['builtin'],
+    limits: {maxFileBytes: 64}
+  });
+  const report = await Scanner.scanProject({root, policy});
+  assert.equal(report.ok, true);
+  assert.equal(report.scannedFiles, 1);
+  assert.equal(report.skippedFiles, 1);
+  assert.ok(report.findings.some((item) => item.id === 'CYB-CODE-001'));
+  assert.ok(report.warnings.some((item) => item.code === 'max-file-bytes-exceeded'));
+});
+
+test('severity filtering happens before the maximum finding count', async (t) => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'midad-cyber-severity-test-'));
+  t.after(() => fs.rm(root, {recursive: true, force: true}));
+  await fs.writeFile(path.join(root, 'sample.js'), [
+    'eval(userInput);',
+    "const query = 'SELECT * FROM users WHERE name=' + req.query.name;"
+  ].join('\n'), 'utf8');
+  const policy = Policy.createPolicy({
+    analyzers: ['builtin'],
+    severityThreshold: 'high',
+    limits: {maxFindings: 1}
+  });
+  const report = await Scanner.scanProject({root, policy});
+  assert.equal(report.findings.length, 1);
+  assert.equal(report.findings[0].severity, 'high');
+  assert.equal(report.stoppedReason, 'max-findings-exceeded');
+});
