@@ -146,3 +146,30 @@ test('Arabic answer on an English definition uses a structured glossary translat
   assert.match(result.text,/DNS is a system that translates domain names into IP addresses/);
   assert.match(result.text,/الصفحة 4/);
 });
+
+test('structured definition pattern translates a known TCP definition without guessing', () => {
+  const translated = Translator.translateSentence(
+    'TCP is a connection-oriented protocol that provides reliable data transmission.'
+  );
+  assert.equal(translated.status,'complete');
+  assert.equal(translated.translationType,'structured-definition-rule');
+  assert.match(translated.translated,/بروتوكول موجه بالاتصال/);
+  assert.match(translated.translated,/يوفر نقل البيانات الموثوق/);
+});
+
+test('structured definition pattern translates a known DNS definition from exact glossary parts', () => {
+  const translated = Translator.translateSentence(
+    'DNS is a system that translates domain names into IP addresses.'
+  );
+  assert.equal(translated.status,'complete');
+  assert.match(translated.translated,/نظام أسماء النطاقات/);
+  assert.match(translated.translated,/يحوّل أسماء النطاقات إلى عناوين IP/);
+});
+
+test('unsupported definition predicates remain partial instead of receiving invented Arabic', () => {
+  const translated = Translator.translateSentence(
+    'DNS is a system that dynamically correlates encrypted sessions.'
+  );
+  assert.equal(translated.status,'partial');
+  assert.ok(translated.unknownWords.length>0);
+});
