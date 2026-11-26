@@ -35,11 +35,16 @@ test('npm manifest and lock inventory exposes names and versions but not registr
       '': {name: 'sample-project'},
       'node_modules/express': {version: '4.18.2', resolved: 'https://registry.example/express.tgz', integrity: 'sha512-secret'},
       'node_modules/express/node_modules/cookie': {version: '0.6.0'},
-      'node_modules/@scope/tool': {version: '1.2.3'}
+      'node_modules/@scope/tool': {version: '1.2.3'},
+      'node_modules/vitest': {version: '2.0.0', dev: true},
+      'node_modules/fsevents': {version: '2.0.0', optional: true}
     }
   }));
   assert.ok(lock.packages.some((pkg) => pkg.name === 'express' && pkg.version === '4.18.2'));
   assert.ok(lock.packages.some((pkg) => pkg.name === '@scope/tool'));
+  assert.ok(lock.packages.some((pkg) => pkg.name === 'vitest' && pkg.relationship === 'locked-development'));
+  assert.ok(lock.packages.some((pkg) => pkg.name === 'fsevents' && pkg.relationship === 'locked-optional'));
+  assert.ok(lock.packages.some((pkg) => pkg.name === 'cookie' && pkg.relationship === 'transitive'));
   assert.doesNotMatch(JSON.stringify(lock), /registry\.example|sha512-secret|resolved|integrity/);
 });
 
@@ -52,6 +57,7 @@ test('Python requirements and Go module parsers ignore comments and indirect met
   ].join('\n'));
   assert.equal(requirements.packages.length, 2);
   assert.ok(requirements.packages.some((pkg) => pkg.name === 'requests' && pkg.version === '==2.31.0'));
+  assert.ok(requirements.packages.every((pkg) => pkg.relationship === 'direct-development'));
 
   const go = Inventory.parseManifest('go.mod', [
     'module example.local/app',
@@ -93,4 +99,33 @@ test('scanner inventories dependencies only when dependency-audit is enabled', a
   assert.ok(enabled.dependencyInventory.packages.some((pkg) => pkg.version === '4.18.2'));
   assert.equal(enabled.execution.networkAccessUsed, false);
   assert.equal(enabled.execution.projectCodeExecuted, false);
+});
+
+test('Cargo manifest sections preserve runtime versus development scope hints', () => {
+  const cargo = Inventory.parseManifest('Cargo.toml', [
+    '[dependencies]',
+    'serde = "1.0"',
+    '[dev-dependencies]',
+    'tempfile = "3.0"',
+    '[build-dependencies]',
+    'cc = "1.0"'
+  ].join('\\n'));
+  assert.ok(cargo.packages.some((pkg) => pkg.name === 'serde' && pkg.relationship === 'direct-runtime'));
+  assert.ok(cargo.packages.some((pkg) => pkg.name === 'tempfile' && pkg.relationship === 'direct-development'));
+  assert.ok(cargo.packages.some((pkg) => pkg.name === 'cc' && pkg.relationship === 'direct-development'));
+});
+
+test('lockfiles without an explicit runtime classification remain unknown', () => {
+  const yarn = Inventory.parseManifest('yarn.lock', [
+    '"left-pad@^1.0.0":',
+    '  version "1.3.0"'
+  ].join('\\n'));
+  assert.equal(yarn.packages[0].relationship, 'locked-unknown-scope');
+
+  const cargo = Inventory.parseManifest('Cargo.lock', [
+    '[[package]]',
+    'name = "serde"',
+    'version = "1.0.0"'
+  ].join('\\n'));
+  assert.equal(cargo.packages[0].relationship, 'locked-unknown-scope');
 });
