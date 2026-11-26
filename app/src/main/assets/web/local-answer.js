@@ -367,7 +367,7 @@
           '\n   النص الأصلي: ' + original + '\n   المصدر: ' + source;
       }
       if (translated && translated.status === 'complete' && translated.translated && translated.translated.indexOf('[') < 0) {
-        var label = translated.translationType === 'phrase' ? 'معنى المصطلح في القاموس المحلي' : 'ترجمة معجمية مقيدة بقواعد معروفة';
+        var label = translated.translationType === 'phrase' ? 'معنى المصطلح في القاموس المحلي' : 'ترجمة معجمية تقريبية بقواعد محلية';
         return (index + 1) + '. ' + label + ': ' + translated.translated +
           '\n   النص الأصلي: ' + original + '\n   المصدر: ' + source;
       }

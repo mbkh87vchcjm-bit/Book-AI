@@ -110,7 +110,7 @@
   }
 
   function translateKnownSentence(original, lexicon) {
-    var match = String(original || '').trim().match(/^(.+?)\\s+(provides|provide|translates|translate|contains|contain|manages|manage|controls|control|executes|execute|identifies|identify)\\s+(.+?)[.!?]?\\s*$/i);
+    var match = String(original || '').trim().match(/^(.+?)\s+(provides|provide|translates|translate|contains|contain|manages|manage|controls|control|executes|execute|identifies|identify)\s+(.+?)[.!?]?\s*$/i);
     if (!match) return null;
     var subject = resolveSubject(lexicon, match[1]);
     var verbEntry = VERB_MAP[match[2].toLowerCase()];
