@@ -225,6 +225,16 @@
       contrastsWith:['SEC-ASVS-001'],related:['SEC-BAC-001','SEC-SUPPLY-CHAIN-001'],sources:['OWASP-TOP10-2025']}
   ];
   var SOURCES = {
+    'OWASP-TOP10-2025-A01': {title:'OWASP Top 10:2025 A01 — Broken Access Control',version:'2025',url:'https://top10.owasp.org/2025/'},
+    'OWASP-TOP10-2025-A02': {title:'OWASP Top 10:2025 A02 — Security Misconfiguration',version:'2025',url:'https://top10.owasp.org/2025/'},
+    'OWASP-TOP10-2025-A03': {title:'OWASP Top 10:2025 A03 — Software Supply Chain Failures',version:'2025',url:'https://top10.owasp.org/2025/'},
+    'OWASP-TOP10-2025-A04': {title:'OWASP Top 10:2025 A04 — Cryptographic Failures',version:'2025',url:'https://top10.owasp.org/2025/'},
+    'OWASP-TOP10-2025-A05': {title:'OWASP Top 10:2025 A05 — Injection',version:'2025',url:'https://top10.owasp.org/2025/'},
+    'OWASP-TOP10-2025-A06': {title:'OWASP Top 10:2025 A06 — Insecure Design',version:'2025',url:'https://top10.owasp.org/2025/'},
+    'OWASP-TOP10-2025-A07': {title:'OWASP Top 10:2025 A07 — Authentication Failures',version:'2025',url:'https://top10.owasp.org/2025/'},
+    'OWASP-TOP10-2025-A08': {title:'OWASP Top 10:2025 A08 — Software or Data Integrity Failures',version:'2025',url:'https://top10.owasp.org/2025/'},
+    'OWASP-TOP10-2025-A09': {title:'OWASP Top 10:2025 A09 — Security Logging and Alerting Failures',version:'2025',url:'https://top10.owasp.org/2025/'},
+    'OWASP-TOP10-2025-A10': {title:'OWASP Top 10:2025 A10 — Mishandling of Exceptional Conditions',version:'2025',url:'https://top10.owasp.org/2025/'},
     'OWASP-TOP10-2025': {title:'OWASP Top 10',version:'2025',url:'https://top10.owasp.org/2025/'},
     'OWASP-ASVS-5.0.0': {title:'OWASP Application Security Verification Standard',version:'5.0.0',url:'https://asvs.owasp.org/'},
     'OWASP-CHEATSHEETS': {title:'OWASP Cheat Sheet Series',version:'online edition',url:'https://cheatsheetseries.owasp.org/'},
